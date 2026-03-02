@@ -294,6 +294,11 @@ class Admin extends Authenticatable
      */
     public function hasPermission(string $permission): bool
     {
+        // Super admin bypass: full access without per-permission checks.
+        if ($this->hasRole('super_admin')) {
+            return true;
+        }
+
         return $this->roles()
             ->whereHas('permissions', fn($q) => $q->where('name', $permission))
             ->exists();
@@ -304,7 +309,9 @@ class Admin extends Authenticatable
      */
     public function hasRole(string $roleName): bool
     {
-        return $this->roles->contains('name', $roleName);
+        return $this->roles()
+            ->where('name', $roleName)
+            ->exists();
     }
 
     /**
@@ -312,6 +319,10 @@ class Admin extends Authenticatable
      */
     public function hasAnyPermission(array $permissions): bool
     {
+        if ($this->hasRole('super_admin')) {
+            return true;
+        }
+
         return $this->roles()
             ->whereHas('permissions', fn($q) => $q->whereIn('name', $permissions))
             ->exists();
