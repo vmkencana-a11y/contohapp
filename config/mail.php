@@ -1,5 +1,28 @@
 <?php
 
+$rawMailScheme = env('MAIL_SCHEME');
+$mailScheme = is_string($rawMailScheme) ? strtolower(trim($rawMailScheme)) : null;
+
+// Backward-compatible normalization for teams still using tls/ssl wording.
+if ($mailScheme === 'tls') {
+    $mailScheme = 'smtp';
+} elseif ($mailScheme === 'ssl') {
+    $mailScheme = 'smtps';
+}
+
+if (!in_array($mailScheme, ['smtp', 'smtps'], true)) {
+    $legacyEncryption = env('MAIL_ENCRYPTION');
+    $legacyEncryption = is_string($legacyEncryption) ? strtolower(trim($legacyEncryption)) : null;
+
+    if ($legacyEncryption === 'tls') {
+        $mailScheme = 'smtp';
+    } elseif ($legacyEncryption === 'ssl') {
+        $mailScheme = 'smtps';
+    } else {
+        $mailScheme = null;
+    }
+}
+
 return [
 
     /*
@@ -39,7 +62,7 @@ return [
 
         'smtp' => [
             'transport' => 'smtp',
-            'scheme' => env('MAIL_SCHEME'),
+            'scheme' => $mailScheme,
             'url' => env('MAIL_URL'),
             'host' => env('MAIL_HOST', '127.0.0.1'),
             'port' => env('MAIL_PORT', 2525),
