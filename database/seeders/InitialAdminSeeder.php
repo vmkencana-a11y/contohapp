@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use App\Models\Admin;
 use App\Models\Permission;
 use App\Models\Role;
 use Illuminate\Database\Seeder;
@@ -18,10 +17,7 @@ class InitialAdminSeeder extends Seeder
         $this->createPermissions();
         
         // Create roles
-        $superAdminRole = $this->createRoles();
-        
-        // Create initial super admin
-        $this->createSuperAdmin($superAdminRole);
+        $this->createRoles();
     }
 
     /**
@@ -116,64 +112,5 @@ class InitialAdminSeeder extends Seeder
         );
 
         return $superAdmin;
-    }
-
-    /**
-     * Create initial super admin.
-     */
-    private function createSuperAdmin(Role $role): void
-    {
-        // Read from config so values remain available when config cache is enabled.
-        $email = (string) config('sekuota.admin.default_email', '');
-        $password = (string) config('sekuota.admin.default_password', '');
-
-        if (!$this->isValidSeedCredential($email) || !$this->isValidSeedCredential($password)) {
-            if (app()->isProduction()) {
-                $this->command?->error('Set valid ADMIN_DEFAULT_EMAIL and ADMIN_DEFAULT_PASSWORD in .env for production seeding.');
-                return;
-            }
-
-            // Local/dev fallback only.
-            $email = 'admin@sekuota.test';
-            $password = 'password';
-        }
-
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $this->command?->error('ADMIN_DEFAULT_EMAIL is not a valid email format.');
-            return;
-        }
-
-        // IMPORTANT: email column is encrypted, so lookup must use deterministic email_hash.
-        $emailHash = hash('sha256', strtolower($email));
-        $admin = Admin::where('email_hash', $emailHash)->first();
-
-        if (!$admin) {
-            $admin = Admin::create([
-                'name' => 'Super Admin',
-                'email' => $email,
-                'password' => $password,
-                'status' => 'active',
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
-        }
-
-        $admin->roles()->syncWithoutDetaching([
-            $role->id => ['assigned_at' => now()],
-        ]);
-    }
-
-    /**
-     * Validate seeded credentials to avoid placeholder values in production.
-     */
-    private function isValidSeedCredential(string $value): bool
-    {
-        $trimmed = trim($value);
-
-        if ($trimmed === '') {
-            return false;
-        }
-
-        return !str_contains($trimmed, '[REQUIRED]');
     }
 }
