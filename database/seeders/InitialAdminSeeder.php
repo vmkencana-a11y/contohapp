@@ -123,25 +123,56 @@ class InitialAdminSeeder extends Seeder
      */
     private function createSuperAdmin(Role $role): void
     {
-        // SECURITY: Prevent running with default credentials in production
-        if (app()->isProduction() && !env('ADMIN_DEFAULT_PASSWORD')) {
-            $this->command?->error('Set ADMIN_DEFAULT_PASSWORD in .env for production seeding.');
+        $email = (string) env('ADMIN_DEFAULT_EMAIL', '');
+        $password = (string) env('ADMIN_DEFAULT_PASSWORD', '');
+
+        if (!$this->isValidSeedCredential($email) || !$this->isValidSeedCredential($password)) {
+            if (app()->isProduction()) {
+                $this->command?->error('Set valid ADMIN_DEFAULT_EMAIL and ADMIN_DEFAULT_PASSWORD in .env for production seeding.');
+                return;
+            }
+
+            // Local/dev fallback only.
+            $email = 'admin@sekuota.test';
+            $password = 'password';
+        }
+
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $this->command?->error('ADMIN_DEFAULT_EMAIL is not a valid email format.');
             return;
         }
 
-        $admin = Admin::firstOrCreate(
-            ['email' => env('ADMIN_DEFAULT_EMAIL', 'admin@sekuota.test')],
-            [
+        // IMPORTANT: email column is encrypted, so lookup must use deterministic email_hash.
+        $emailHash = hash('sha256', strtolower($email));
+        $admin = Admin::where('email_hash', $emailHash)->first();
+
+        if (!$admin) {
+            $admin = Admin::create([
                 'name' => 'Super Admin',
-                'password' => env('ADMIN_DEFAULT_PASSWORD', 'password'),
+                'email' => $email,
+                'password' => $password,
                 'status' => 'active',
                 'created_at' => now(),
                 'updated_at' => now(),
-            ]
-        );
+            ]);
+        }
 
         $admin->roles()->syncWithoutDetaching([
             $role->id => ['assigned_at' => now()],
         ]);
+    }
+
+    /**
+     * Validate seeded credentials to avoid placeholder values in production.
+     */
+    private function isValidSeedCredential(string $value): bool
+    {
+        $trimmed = trim($value);
+
+        if ($trimmed === '') {
+            return false;
+        }
+
+        return !str_contains($trimmed, '[REQUIRED]');
     }
 }
