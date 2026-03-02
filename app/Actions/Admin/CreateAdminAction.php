@@ -4,6 +4,8 @@ namespace App\Actions\Admin;
 
 use App\Models\Admin;
 use App\Models\Role;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * Create Admin Action
@@ -21,21 +23,32 @@ class CreateAdminAction
         string $password,
         ?string $roleName = null
     ): Admin {
-        $admin = Admin::create([
-            'name' => $name,
-            'email' => $email,
-            'password' => $password, // Model mutator handles hashing
-            'status' => 'active',
-        ]);
+        return DB::transaction(function () use ($name, $email, $password, $roleName): Admin {
+            $admin = Admin::create([
+                'name' => $name,
+                'email' => $email,
+                'password' => $password, // Model mutator handles hashing
+                'status' => 'active',
+            ]);
 
-        // Assign role if specified
-        if ($roleName) {
-            $role = Role::where('name', $roleName)->first();
-            if ($role) {
-                $admin->roles()->attach($role->id, ['assigned_at' => now()]);
+            // Assign role if specified, fail-fast if role invalid
+            if ($roleName) {
+                $role = Role::where('name', $roleName)->first();
+                if (!$role) {
+                    throw new RuntimeException("Role '{$roleName}' not found.");
+                }
+
+                $admin->roles()->syncWithoutDetaching([
+                    $role->id => ['assigned_at' => now()],
+                ]);
+
+                $hasRole = $admin->roles()->where('roles.id', $role->id)->exists();
+                if (!$hasRole) {
+                    throw new RuntimeException("Failed to attach role '{$roleName}' to admin.");
+                }
             }
-        }
 
-        return $admin;
+            return $admin;
+        });
     }
 }

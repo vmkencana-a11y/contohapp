@@ -123,8 +123,9 @@ class InitialAdminSeeder extends Seeder
      */
     private function createSuperAdmin(Role $role): void
     {
-        $email = (string) env('ADMIN_DEFAULT_EMAIL', '');
-        $password = (string) env('ADMIN_DEFAULT_PASSWORD', '');
+        // Read from config so values remain available when config cache is enabled.
+        $email = (string) config('sekuota.admin.default_email', '');
+        $password = (string) config('sekuota.admin.default_password', '');
 
         if (!$this->isValidSeedCredential($email) || !$this->isValidSeedCredential($password)) {
             if (app()->isProduction()) {

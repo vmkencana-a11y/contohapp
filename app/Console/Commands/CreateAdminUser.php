@@ -6,6 +6,7 @@ use App\Actions\Admin\CreateAdminAction;
 use App\Models\Admin;
 use App\Models\Role;
 use Illuminate\Console\Command;
+use Throwable;
 
 class CreateAdminUser extends Command
 {
@@ -21,19 +22,24 @@ class CreateAdminUser extends Command
     {
         $name = $this->argument('name');
         $email = $this->argument('email');
-        
-        // Check if admin exists using deterministic email hash lookup.
-        if (Admin::findByEmail($email)) {
-            $this->error("Admin with email {$email} already exists!");
-            return self::FAILURE;
-        }
-
         $roleName = (string) $this->option('role');
+        
         $role = Role::where('name', $roleName)->first();
         if (!$role) {
             $availableRoles = Role::query()->pluck('name')->implode(', ');
             $this->error("Role '{$roleName}' not found. Available roles: {$availableRoles}");
             return self::FAILURE;
+        }
+
+        // If admin already exists, use this command to ensure role assignment.
+        $existingAdmin = Admin::findByEmail($email);
+        if ($existingAdmin) {
+            $existingAdmin->roles()->syncWithoutDetaching([
+                $role->id => ['assigned_at' => now()],
+            ]);
+
+            $this->info("Admin with email {$email} already exists. Role '{$roleName}' ensured.");
+            return self::SUCCESS;
         }
         
         // Get password
@@ -47,12 +53,17 @@ class CreateAdminUser extends Command
             return self::FAILURE;
         }
         
-        $admin = app(CreateAdminAction::class)->execute(
-            $name,
-            $email,
-            $password,
-            $roleName
-        );
+        try {
+            $admin = app(CreateAdminAction::class)->execute(
+                $name,
+                $email,
+                $password,
+                $roleName
+            );
+        } catch (Throwable $e) {
+            $this->error('Failed to create admin: ' . $e->getMessage());
+            return self::FAILURE;
+        }
         
         $this->info("Admin created successfully!");
         $this->table(['Field', 'Value'], [
