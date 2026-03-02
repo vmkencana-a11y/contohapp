@@ -30,6 +30,7 @@ Alpine.data('adminLayout', () => ({
 Alpine.data('settingsForm', () => ({
     kycDriver: 'local',
     maintenanceMode: '0',
+    testUrl: '',
     testingS3: false,
     testResult: null,
 
@@ -37,6 +38,11 @@ Alpine.data('settingsForm', () => ({
         // Read the server-rendered initial value from the element's data attribute
         const initial = this.$el.dataset.kycDriver;
         if (initial) this.kycDriver = initial;
+
+        const testUrl = this.$el.dataset.testUrl;
+        if (typeof testUrl === 'string' && testUrl.length > 0) {
+            this.testUrl = testUrl;
+        }
 
         const maintenance = this.$el.dataset.maintenanceMode;
         if (maintenance === '1' || maintenance === '0') {
@@ -71,7 +77,10 @@ Alpine.data('settingsForm', () => ({
         this.testingS3 = true;
         this.testResult = null;
         try {
-            const url = this.$el.dataset.testUrl;
+            const url = this.testUrl;
+            if (!url) {
+                throw new Error('Endpoint test S3 tidak ditemukan.');
+            }
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {

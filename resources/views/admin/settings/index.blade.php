@@ -158,14 +158,20 @@ S3_KYC_PATH_STYLE=true</pre>
                                 </button>
 
                                 {{-- Test Result --}}
-                                <div x-show="hasTestResult()" x-transition class="mt-3">
-                                    <div x-show="isTestSuccess()" class="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3">
-                                        <p class="text-sm text-green-800 dark:text-green-200" x-text="testResultMessage()"></p>
+                                <template x-if="hasTestResult()">
+                                    <div class="mt-3">
+                                        <template x-if="isTestSuccess()">
+                                            <div class="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3">
+                                                <p class="text-sm text-green-800 dark:text-green-200" x-text="testResultMessage()"></p>
+                                            </div>
+                                        </template>
+                                        <template x-if="isTestFailure()">
+                                            <div class="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
+                                                <p class="text-sm text-red-800 dark:text-red-200" x-text="testResultMessage()"></p>
+                                            </div>
+                                        </template>
                                     </div>
-                                    <div x-show="isTestFailure()" class="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
-                                        <p class="text-sm text-red-800 dark:text-red-200" x-text="testResultMessage()"></p>
-                                    </div>
-                                </div>
+                                </template>
                             </div>
                         </div>
 
@@ -188,8 +194,7 @@ S3_KYC_PATH_STYLE=true</pre>
                         @foreach($settings as $setting)
                         <div class="col-span-1"
                              @if($setting->key === 'general.maintenance_end_time')
-                             x-show="showMaintenanceEndTime()"
-                             x-transition
+                             x-bind:class="{ 'hidden': !showMaintenanceEndTime() }"
                              @endif>
                             <label for="{{ $setting->key }}" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white mb-2">
                                 {{ $setting->label ?? ucwords(str_replace('_', ' ', $setting->key)) }}
