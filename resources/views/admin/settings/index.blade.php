@@ -51,6 +51,7 @@
     <form action="{{ route('admin.settings.update') }}" method="POST"
           x-data="settingsForm"
           data-kyc-driver="{{ $groupedSettings->get('kyc_storage')?->firstWhere('key', 'kyc_storage.driver')?->value ?? 'local' }}"
+          data-maintenance-mode="{{ $groupedSettings->get('general')?->firstWhere('key', 'general.maintenance_mode')?->value ?? '0' }}"
           data-test-url="{{ route('admin.settings.kyc-storage.test') }}">
         @csrf
         @method('PUT')
@@ -157,12 +158,12 @@ S3_KYC_PATH_STYLE=true</pre>
                                 </button>
 
                                 {{-- Test Result --}}
-                                <div x-show="testResult !== null" x-transition class="mt-3">
-                                    <div x-show="testResult && testResult.success" class="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3">
-                                        <p class="text-sm text-green-800 dark:text-green-200" x-text="testResult ? testResult.message : ''"></p>
+                                <div x-show="hasTestResult()" x-transition class="mt-3">
+                                    <div x-show="isTestSuccess()" class="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3">
+                                        <p class="text-sm text-green-800 dark:text-green-200" x-text="testResultMessage()"></p>
                                     </div>
-                                    <div x-show="testResult && !testResult.success" class="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
-                                        <p class="text-sm text-red-800 dark:text-red-200" x-text="testResult ? testResult.message : ''"></p>
+                                    <div x-show="isTestFailure()" class="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
+                                        <p class="text-sm text-red-800 dark:text-red-200" x-text="testResultMessage()"></p>
                                     </div>
                                 </div>
                             </div>
@@ -185,14 +186,21 @@ S3_KYC_PATH_STYLE=true</pre>
                 <div class="p-6 sm:p-8">
                     <div class="grid grid-cols-1 gap-x-6 gap-y-8 sm:grid-cols-2">
                         @foreach($settings as $setting)
-                        <div class="col-span-1">
+                        <div class="col-span-1"
+                             @if($setting->key === 'general.maintenance_end_time')
+                             x-show="showMaintenanceEndTime()"
+                             x-transition
+                             @endif>
                             <label for="{{ $setting->key }}" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white mb-2">
                                 {{ $setting->label ?? ucwords(str_replace('_', ' ', $setting->key)) }}
                             </label>
                             
                             @if($setting->type === 'boolean')
                                 <select name="settings[{{ $setting->key }}]" id="{{ $setting->key }}" 
-                                class="input-field w-full block">
+                                class="input-field w-full block"
+                                @if($setting->key === 'general.maintenance_mode')
+                                x-model="maintenanceMode"
+                                @endif>
                                     <option value="1" {{ $setting->value == '1' ? 'selected' : '' }}>Enabled</option>
                                     <option value="0" {{ $setting->value == '0' ? 'selected' : '' }}>Disabled</option>
                                 </select>

@@ -29,6 +29,7 @@ Alpine.data('adminLayout', () => ({
  */
 Alpine.data('settingsForm', () => ({
     kycDriver: 'local',
+    maintenanceMode: '0',
     testingS3: false,
     testResult: null,
 
@@ -36,6 +37,34 @@ Alpine.data('settingsForm', () => ({
         // Read the server-rendered initial value from the element's data attribute
         const initial = this.$el.dataset.kycDriver;
         if (initial) this.kycDriver = initial;
+
+        const maintenance = this.$el.dataset.maintenanceMode;
+        if (maintenance === '1' || maintenance === '0') {
+            this.maintenanceMode = maintenance;
+        }
+    },
+
+    hasTestResult() {
+        return this.testResult !== null;
+    },
+
+    isTestSuccess() {
+        return this.testResult !== null && this.testResult.success === true;
+    },
+
+    isTestFailure() {
+        return this.testResult !== null && this.testResult.success === false;
+    },
+
+    testResultMessage() {
+        if (!this.testResult || typeof this.testResult.message !== 'string') {
+            return '';
+        }
+        return this.testResult.message;
+    },
+
+    showMaintenanceEndTime() {
+        return this.maintenanceMode === '1';
     },
 
     async testS3Connection() {
