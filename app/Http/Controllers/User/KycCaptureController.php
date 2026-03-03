@@ -299,7 +299,8 @@ class KycCaptureController extends Controller
             $framePaths['selfie'],
             $framePaths['id_card'],
             $framePaths['left_side'],
-            $framePaths['right_side']
+            $framePaths['right_side'],
+            $this->storageService->getTempDiskName()
         );
 
         Log::info('KYC processing job dispatched', [

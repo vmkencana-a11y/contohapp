@@ -48,7 +48,8 @@ class ProcessKycDocuments implements ShouldQueue
         public string $tempSelfiePath,
         public string $tempIdCardPath,
         public string $tempLeftSidePath,
-        public string $tempRightSidePath
+        public string $tempRightSidePath,
+        public string $tempDiskName = 'private'
     ) {}
 
     /**
@@ -168,8 +169,16 @@ class ProcessKycDocuments implements ShouldQueue
             foreach ($candidateDisks as $diskName) {
                 try {
                     $disk = Storage::disk($diskName);
+                    $absolutePath = null;
+                    try {
+                        $absolutePath = $disk->path($tempPath);
+                    } catch (\Throwable) {
+                        // Non-local disks may not expose absolute path.
+                    }
+
                     if (!$disk->exists($tempPath)) {
-                        $lastError = "Temp file path missing on disk [{$diskName}]: {$tempPath}";
+                        $lastError = "Temp file path missing on disk [{$diskName}]: {$tempPath}"
+                            . ($absolutePath ? " (abs: {$absolutePath})" : '');
                         continue;
                     }
 
@@ -204,9 +213,8 @@ class ProcessKycDocuments implements ShouldQueue
     {
         $configuredDisks = array_keys((array) config('filesystems.disks', []));
         $candidates = array_values(array_unique(array_filter([
-            $storageService->getTempDiskName(),
+            $this->tempDiskName,
             'private',
-            's3_kyc',
         ])));
 
         return array_values(array_filter($candidates, fn ($disk) => in_array($disk, $configuredDisks, true)));
