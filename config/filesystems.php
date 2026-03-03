@@ -51,6 +51,10 @@ return [
             'driver' => 'local',
             'root' => storage_path('app/private'),
             'visibility' => 'private',
+            'permissions' => [
+                'file' => ['public' => 0644, 'private' => 0660],
+                'dir' => ['public' => 0755, 'private' => 0770],
+            ],
             'throw' => false,
             'report' => false,
         ],
@@ -60,6 +64,10 @@ return [
             // Stable local path for KYC temp files across release-based deployments.
             'root' => env('KYC_TEMP_ROOT', storage_path('app/private')),
             'visibility' => 'private',
+            'permissions' => [
+                'file' => ['public' => 0644, 'private' => 0660],
+                'dir' => ['public' => 0755, 'private' => 0770],
+            ],
             'throw' => false,
             'report' => false,
         ],

@@ -153,7 +153,8 @@ class KycCaptureController extends Controller
 
             // Generate storage path
             $storagePath = 'kyc/' . $user->id . '/' . $validated['session_id'];
-            $fileName = $validated['type'] . '_' . now()->timestamp . '.tmp';
+            // Avoid .tmp extension to prevent external tmp-cleaner races on some servers.
+            $fileName = $validated['type'] . '_' . now()->timestamp . '_' . Str::lower(Str::random(8)) . '.capture';
             $filePath = $storagePath . '/' . $fileName;
 
             // Store temporarily
@@ -185,6 +186,13 @@ class KycCaptureController extends Controller
             ]);
 
         } catch (\Exception $e) {
+            Log::error('KYC frame submit failed', [
+                'session_id' => $validated['session_id'] ?? null,
+                'type' => $validated['type'] ?? null,
+                'temp_disk' => $this->storageService->getTempDiskName(),
+                'temp_disk_root' => config('filesystems.disks.' . $this->storageService->getTempDiskName() . '.root'),
+                'error' => $e->getMessage(),
+            ]);
             report($e);
             return response()->json([
                 'success' => false,
@@ -277,6 +285,15 @@ class KycCaptureController extends Controller
             ];
 
             if (!$exists) {
+                Log::error('KYC temp file missing before dispatch', [
+                    'session_id' => $validated['session_id'],
+                    'type' => $type,
+                    'path' => $path,
+                    'disk' => $this->storageService->getTempDiskName(),
+                    'disk_root' => config('filesystems.disks.' . $this->storageService->getTempDiskName() . '.root'),
+                    'abs' => $absolutePath,
+                ]);
+
                 return response()->json([
                     'success' => false,
                     'message' => 'File capture tidak ditemukan.',
