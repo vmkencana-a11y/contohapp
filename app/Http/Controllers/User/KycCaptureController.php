@@ -11,6 +11,7 @@ use App\Services\KycStorageService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 /**
  * KYC Camera Capture Controller.
@@ -300,6 +301,13 @@ class KycCaptureController extends Controller
             $framePaths['left_side'],
             $framePaths['right_side']
         );
+
+        Log::info('KYC processing job dispatched', [
+            'kyc_id' => $kyc->id,
+            'session_id' => $validated['session_id'],
+            'temp_disk' => $this->storageService->getTempDiskName(),
+            'temp_paths' => $framePaths,
+        ]);
 
         // Complete session
         $this->sessionService->completeSession($validated['session_id']);

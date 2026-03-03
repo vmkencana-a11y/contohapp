@@ -17,6 +17,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | KYC Temp Disk
+    |--------------------------------------------------------------------------
+    |
+    | Optional override for temporary raw KYC capture storage before encryption.
+    | Leave empty to use automatic fallback logic in KycStorageService.
+    |
+    */
+    'kyc_temp_disk' => env('KYC_TEMP_DISK'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

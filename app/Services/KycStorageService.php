@@ -33,14 +33,41 @@ class KycStorageService
     }
 
     /**
-     * Get the temporary storage disk (always local).
+     * Get the temporary storage disk.
      *
-     * Temp files are stored locally for performance,
-     * regardless of the final storage driver.
+     * Default behavior:
+     * - use KYC_TEMP_DISK if explicitly configured
+     * - else use s3_kyc when active driver is s3
+     * - else fallback to private (local)
      */
     public function tempDisk(): Filesystem
     {
-        return Storage::disk('private');
+        return Storage::disk($this->getTempDiskName());
+    }
+
+    /**
+     * Get temp disk name for raw capture files.
+     */
+    public function getTempDiskName(): string
+    {
+        $configuredTempDisk = config('filesystems.kyc_temp_disk');
+        $availableDisks = config('filesystems.disks', []);
+
+        if (
+            is_string($configuredTempDisk)
+            && $configuredTempDisk !== ''
+            && array_key_exists($configuredTempDisk, $availableDisks)
+        ) {
+            return $configuredTempDisk;
+        }
+
+        // In distributed setups, using S3 as temp storage prevents "file not found"
+        // when queue workers run on different hosts.
+        if ($this->getDriver() === 's3') {
+            return 's3_kyc';
+        }
+
+        return 'private';
     }
 
     /**

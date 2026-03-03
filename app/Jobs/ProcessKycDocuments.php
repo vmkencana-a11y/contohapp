@@ -37,6 +37,7 @@ class ProcessKycDocuments implements ShouldQueue
      * The maximum number of seconds the job can run.
      */
     public int $timeout = 120;
+    public array $backoff = [5, 15, 30];
 
     /**
      * Create a new job instance.
@@ -73,10 +74,7 @@ class ProcessKycDocuments implements ShouldQueue
 
             $results = [];
             foreach ($types as $type => $tempPath) {
-                $content = $storageService->tempDisk()->get($tempPath);
-                if (!$content) {
-                    throw new \Exception("Temp file not found: {$type}");
-                }
+                $content = $this->readTempFileWithRetry($storageService, $tempPath, $type);
 
                 // Process (resize, compress, strip EXIF)
                 $processed = $imageService->processFromContent($content);
@@ -138,14 +136,43 @@ class ProcessKycDocuments implements ShouldQueue
                 'error' => $e->getMessage(),
             ]);
 
-            // Mark as failed/rejected
-            $this->kyc->update([
-                'status' => KycStatusEnum::REJECTED,
-                'rejection_reason' => 'Gagal memproses dokumen. Silakan coba lagi.',
-            ]);
-
             throw $e;
         }
+    }
+
+    /**
+     * Read a temp file with small retries to handle transient storage latency.
+     */
+    private function readTempFileWithRetry(
+        KycStorageService $storageService,
+        string $tempPath,
+        string $type
+    ): string {
+        $attempts = 3;
+        $lastError = null;
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            try {
+                if (!$storageService->tempDisk()->exists($tempPath)) {
+                    $lastError = "Temp file path missing on disk: {$tempPath}";
+                } else {
+                    $content = $storageService->tempDisk()->get($tempPath);
+                    if (is_string($content) && $content !== '') {
+                        return $content;
+                    }
+
+                    $lastError = "Temp file unreadable/empty at path: {$tempPath}";
+                }
+            } catch (\Throwable $e) {
+                $lastError = $e->getMessage();
+            }
+
+            if ($attempt < $attempts) {
+                usleep(300000); // 300ms
+            }
+        }
+
+        throw new \Exception("Temp file not found: {$type}. {$lastError}");
     }
 
     /**
@@ -156,6 +183,11 @@ class ProcessKycDocuments implements ShouldQueue
         Log::error('KYC job failed permanently', [
             'kyc_id' => $this->kyc->id,
             'exception' => $exception->getMessage(),
+        ]);
+
+        $this->kyc->update([
+            'status' => KycStatusEnum::REJECTED,
+            'rejection_reason' => 'Gagal memproses dokumen. Silakan coba lagi.',
         ]);
 
         // Clean up temp files
