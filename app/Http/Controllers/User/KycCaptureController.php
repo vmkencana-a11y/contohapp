@@ -254,14 +254,42 @@ class KycCaptureController extends Controller
         }
 
         // Verify files exist
+        $tempDisk = $this->storageService->tempDisk();
+        $tempChecks = [];
+
         foreach ($requiredTypes as $type) {
-            if (!$this->storageService->tempDisk()->exists($framePaths[$type])) {
+            $path = $framePaths[$type];
+            $absolutePath = null;
+            try {
+                $absolutePath = $tempDisk->path($path);
+            } catch (\Throwable) {
+                // Non-local disks may not expose absolute path.
+            }
+
+            $exists = method_exists($tempDisk, 'fileExists')
+                ? $tempDisk->fileExists($path)
+                : $tempDisk->exists($path);
+
+            $tempChecks[$type] = [
+                'path' => $path,
+                'exists' => $exists,
+                'abs' => $absolutePath,
+            ];
+
+            if (!$exists) {
                 return response()->json([
                     'success' => false,
                     'message' => 'File capture tidak ditemukan.',
                 ], 422);
             }
         }
+
+        Log::info('KYC temp files verified before dispatch', [
+            'session_id' => $validated['session_id'],
+            'temp_disk' => $this->storageService->getTempDiskName(),
+            'temp_disk_root' => config('filesystems.disks.' . $this->storageService->getTempDiskName() . '.root'),
+            'files' => $tempChecks,
+        ]);
 
         // Get session data
         $session = $this->sessionService->getSessionData($validated['session_id']);
