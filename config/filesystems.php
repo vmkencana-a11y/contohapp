@@ -21,7 +21,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | Optional override for temporary raw KYC capture storage before encryption.
-    | Leave empty to use automatic fallback logic in KycStorageService.
+    | Leave empty to use local private storage by default.
     |
     */
     'kyc_temp_disk' => env('KYC_TEMP_DISK'),

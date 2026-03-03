@@ -45,7 +45,6 @@ class KycStorageService
      *
      * Default behavior:
      * - use KYC_TEMP_DISK if explicitly configured
-     * - else use s3_kyc when active driver is s3
      * - else fallback to private (local)
      */
     public function tempDisk(): Filesystem
@@ -67,12 +66,6 @@ class KycStorageService
             && array_key_exists($configuredTempDisk, $availableDisks)
         ) {
             return $configuredTempDisk;
-        }
-
-        // In distributed setups, using S3 as temp storage prevents "file not found"
-        // when queue workers run on different hosts.
-        if ($this->getDriver() === 's3') {
-            return 's3_kyc';
         }
 
         return 'private';
