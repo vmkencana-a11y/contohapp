@@ -11,6 +11,20 @@ class SystemSettingsSeeder extends Seeder
     {
         $settings = [
             [
+                'key' => 'general.maintenance_mode',
+                'value' => '0',
+                'type' => 'boolean',
+                'group' => 'general',
+                'label' => 'Maintenance Mode',
+            ],
+            [
+                'key' => 'general.maintenance_end_time',
+                'value' => null,
+                'type' => 'datetime',
+                'group' => 'general',
+                'label' => 'Maintenance End Time',
+            ],
+            [
                 'key' => 'security.max_concurrent_sessions',
                 'value' => '5',
                 'type' => 'integer',

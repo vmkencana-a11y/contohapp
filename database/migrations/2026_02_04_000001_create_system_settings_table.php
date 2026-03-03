@@ -62,6 +62,13 @@ return new class extends Migration
                 'group' => 'general',
                 'label' => 'Maintenance Mode',
             ],
+            [
+                'key' => 'general.maintenance_end_time',
+                'value' => null,
+                'type' => 'datetime',
+                'group' => 'general',
+                'label' => 'Maintenance End Time',
+            ],
         ];
 
         DB::table('system_settings')->insert($settings);

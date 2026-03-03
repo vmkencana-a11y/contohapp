@@ -22,12 +22,40 @@ class SystemSettingsController extends Controller
 
     public function index(): View
     {
+        $this->ensureCoreGeneralSettings();
+
         $settings = SystemSetting::all()->groupBy('group');
 
         return view('admin.settings.index', [
             'groupedSettings' => $settings,
             'kycStorageInfo' => $this->kycStorage->getDriverInfo(),
         ]);
+    }
+
+    /**
+     * Ensure required general settings rows exist for settings UI rendering.
+     */
+    private function ensureCoreGeneralSettings(): void
+    {
+        SystemSetting::firstOrCreate(
+            ['key' => 'general.maintenance_mode'],
+            [
+                'value' => '0',
+                'type' => 'boolean',
+                'group' => 'general',
+                'label' => 'Maintenance Mode',
+            ]
+        );
+
+        SystemSetting::firstOrCreate(
+            ['key' => 'general.maintenance_end_time'],
+            [
+                'value' => null,
+                'type' => 'datetime',
+                'group' => 'general',
+                'label' => 'Maintenance End Time',
+            ]
+        );
     }
 
     public function update(Request $request): RedirectResponse
