@@ -169,9 +169,20 @@ class KycReviewController extends Controller
                 continue;
             }
 
-            $disk = Storage::disk($diskName);
-            if ($disk->exists($path)) {
-                return $disk;
+            try {
+                $disk = Storage::disk($diskName);
+
+                // Prefer fileExists() to avoid directory existence checks on some S3-compatible providers.
+                $exists = method_exists($disk, 'fileExists')
+                    ? $disk->fileExists($path)
+                    : $disk->exists($path);
+
+                if ($exists) {
+                    return $disk;
+                }
+            } catch (\Throwable $e) {
+                // Ignore disk-level existence errors and continue fallback candidates.
+                continue;
             }
         }
 

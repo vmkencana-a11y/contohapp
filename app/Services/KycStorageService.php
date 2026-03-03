@@ -43,9 +43,7 @@ class KycStorageService
     /**
      * Get the temporary storage disk.
      *
-     * Default behavior:
-     * - use KYC_TEMP_DISK if explicitly configured
-     * - else fallback to private (local)
+     * Temp files are always stored on local private disk.
      */
     public function tempDisk(): Filesystem
     {
@@ -57,17 +55,6 @@ class KycStorageService
      */
     public function getTempDiskName(): string
     {
-        $configuredTempDisk = config('filesystems.kyc_temp_disk');
-        $availableDisks = config('filesystems.disks', []);
-
-        if (
-            is_string($configuredTempDisk)
-            && $configuredTempDisk !== ''
-            && array_key_exists($configuredTempDisk, $availableDisks)
-        ) {
-            return $configuredTempDisk;
-        }
-
         return 'private';
     }
 

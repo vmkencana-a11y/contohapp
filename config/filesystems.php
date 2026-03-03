@@ -17,17 +17,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | KYC Temp Disk
-    |--------------------------------------------------------------------------
-    |
-    | Optional override for temporary raw KYC capture storage before encryption.
-    | Leave empty to use local private storage by default.
-    |
-    */
-    'kyc_temp_disk' => env('KYC_TEMP_DISK'),
-
-    /*
-    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |

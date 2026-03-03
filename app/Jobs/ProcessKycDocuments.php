@@ -212,10 +212,7 @@ class ProcessKycDocuments implements ShouldQueue
     private function candidateTempDisks(KycStorageService $storageService): array
     {
         $configuredDisks = array_keys((array) config('filesystems.disks', []));
-        $candidates = array_values(array_unique(array_filter([
-            $this->tempDiskName,
-            'private',
-        ])));
+        $candidates = ['private'];
 
         return array_values(array_filter($candidates, fn ($disk) => in_array($disk, $configuredDisks, true)));
     }
