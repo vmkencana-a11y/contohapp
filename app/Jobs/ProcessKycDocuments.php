@@ -13,6 +13,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Async KYC Document Processing Job.
@@ -73,8 +74,11 @@ class ProcessKycDocuments implements ShouldQueue
             ];
 
             $results = [];
+            $resolvedTempDisks = [];
             foreach ($types as $type => $tempPath) {
-                $content = $this->readTempFileWithRetry($storageService, $tempPath, $type);
+                $tempFile = $this->readTempFileWithRetry($storageService, $tempPath, $type);
+                $content = $tempFile['content'];
+                $resolvedTempDisks[$tempPath] = $tempFile['disk'];
 
                 // Process (resize, compress, strip EXIF)
                 $processed = $imageService->processFromContent($content);
@@ -122,7 +126,11 @@ class ProcessKycDocuments implements ShouldQueue
 
             // Delete temp files
             foreach ($types as $tempPath) {
-                $storageService->tempDisk()->delete($tempPath);
+                $this->deleteTempFileAcrossDisks(
+                    $storageService,
+                    $tempPath,
+                    $resolvedTempDisks[$tempPath] ?? null
+                );
             }
 
             Log::info('KYC documents processed successfully', [
@@ -147,24 +155,32 @@ class ProcessKycDocuments implements ShouldQueue
         KycStorageService $storageService,
         string $tempPath,
         string $type
-    ): string {
+    ): array {
         $attempts = 3;
         $lastError = null;
+        $candidateDisks = $this->candidateTempDisks($storageService);
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
-            try {
-                if (!$storageService->tempDisk()->exists($tempPath)) {
-                    $lastError = "Temp file path missing on disk: {$tempPath}";
-                } else {
-                    $content = $storageService->tempDisk()->get($tempPath);
-                    if (is_string($content) && $content !== '') {
-                        return $content;
+            foreach ($candidateDisks as $diskName) {
+                try {
+                    $disk = Storage::disk($diskName);
+                    if (!$disk->exists($tempPath)) {
+                        $lastError = "Temp file path missing on disk [{$diskName}]: {$tempPath}";
+                        continue;
                     }
 
-                    $lastError = "Temp file unreadable/empty at path: {$tempPath}";
+                    $content = $disk->get($tempPath);
+                    if (is_string($content) && $content !== '') {
+                        return [
+                            'content' => $content,
+                            'disk' => $diskName,
+                        ];
+                    }
+
+                    $lastError = "Temp file unreadable/empty on disk [{$diskName}] at path: {$tempPath}";
+                } catch (\Throwable $e) {
+                    $lastError = "Disk [{$diskName}] error: " . $e->getMessage();
                 }
-            } catch (\Throwable $e) {
-                $lastError = $e->getMessage();
             }
 
             if ($attempt < $attempts) {
@@ -172,7 +188,51 @@ class ProcessKycDocuments implements ShouldQueue
             }
         }
 
-        throw new \Exception("Temp file not found: {$type}. {$lastError}");
+        throw new \Exception(
+            "Temp file not found: {$type}. {$lastError}. Tried disks: " . implode(', ', $candidateDisks)
+        );
+    }
+
+    /**
+     * Candidate disks to locate temp files.
+     */
+    private function candidateTempDisks(KycStorageService $storageService): array
+    {
+        $configuredDisks = array_keys((array) config('filesystems.disks', []));
+        $candidates = array_values(array_unique(array_filter([
+            $storageService->getTempDiskName(),
+            'private',
+            's3_kyc',
+        ])));
+
+        return array_values(array_filter($candidates, fn ($disk) => in_array($disk, $configuredDisks, true)));
+    }
+
+    /**
+     * Best-effort cleanup across candidate disks.
+     */
+    private function deleteTempFileAcrossDisks(
+        KycStorageService $storageService,
+        string $tempPath,
+        ?string $resolvedDisk = null
+    ): void {
+        $disks = $this->candidateTempDisks($storageService);
+
+        if ($resolvedDisk !== null) {
+            array_unshift($disks, $resolvedDisk);
+            $disks = array_values(array_unique($disks));
+        }
+
+        foreach ($disks as $diskName) {
+            try {
+                $disk = Storage::disk($diskName);
+                if ($disk->exists($tempPath)) {
+                    $disk->delete($tempPath);
+                }
+            } catch (\Throwable) {
+                // Ignore cleanup errors
+            }
+        }
     }
 
     /**
@@ -192,9 +252,9 @@ class ProcessKycDocuments implements ShouldQueue
 
         // Clean up temp files
         $storageService = app(KycStorageService::class);
-        $storageService->tempDisk()->delete($this->tempSelfiePath);
-        $storageService->tempDisk()->delete($this->tempIdCardPath);
-        $storageService->tempDisk()->delete($this->tempLeftSidePath);
-        $storageService->tempDisk()->delete($this->tempRightSidePath);
+        $this->deleteTempFileAcrossDisks($storageService, $this->tempSelfiePath);
+        $this->deleteTempFileAcrossDisks($storageService, $this->tempIdCardPath);
+        $this->deleteTempFileAcrossDisks($storageService, $this->tempLeftSidePath);
+        $this->deleteTempFileAcrossDisks($storageService, $this->tempRightSidePath);
     }
 }
