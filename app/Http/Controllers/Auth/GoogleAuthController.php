@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\BlacklistService;
 use App\Services\GoogleOAuthService;
 use App\Services\LoggingService;
+use App\Services\NotificationService;
 use App\Services\OtpService;
 use App\Services\SessionService;
 use Illuminate\Http\JsonResponse;
@@ -20,6 +21,7 @@ class GoogleAuthController extends Controller
         private GoogleOAuthService $googleService,
         private SessionService $sessionService,
         private OtpService $otpService,
+        private NotificationService $notificationService,
         private BlacklistService $blacklistService,
         private LoggingService $logger,
     ) {
@@ -125,12 +127,20 @@ class GoogleAuthController extends Controller
             // Send OTP for account linking verification
             try {
                 $otp = $this->otpService->requestLoginOtp($googleUser['email']);
+                $this->notificationService->sendOtp(
+                    $googleUser['email'],
+                    $otp,
+                    $existingUser->name
+                );
 
                 if (app()->isLocal()) {
                     session()->flash('dev_otp', $otp);
                 }
             } catch (\Exception $e) {
                 report($e);
+
+                return redirect()->route('auth.google.link-form')
+                    ->withErrors(['otp' => 'Gagal mengirim kode OTP. Silakan coba kirim ulang.']);
             }
 
             return redirect()->route('auth.google.link-form')
@@ -174,6 +184,52 @@ class GoogleAuthController extends Controller
             'googleName' => $linkData['google_name'],
             'devOtp' => session('dev_otp'),
         ]);
+    }
+
+    /**
+     * Resend OTP for Google account linking flow.
+     */
+    public function resendLinkOtp(Request $request): JsonResponse|RedirectResponse
+    {
+        $linkData = session('google_link_data');
+
+        if (!$linkData) {
+            return redirect()->route('login')
+                ->withErrors(['email' => 'Sesi linking sudah kedaluwarsa. Silakan login ulang.']);
+        }
+
+        try {
+            $user = User::find($linkData['user_id']);
+
+            if (!$user || !$user->canLogin()) {
+                return $this->errorResponse('Akun tidak valid.');
+            }
+
+            $otp = $this->otpService->requestLoginOtp($linkData['google_email']);
+            $this->notificationService->sendOtp(
+                $linkData['google_email'],
+                $otp,
+                $user->name
+            );
+
+            if (app()->isLocal()) {
+                session()->flash('dev_otp', $otp);
+            }
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Kode OTP telah dikirim ke email Anda.',
+                    'redirect' => route('auth.google.link-form'),
+                ]);
+            }
+
+            return redirect()->route('auth.google.link-form')
+                ->with('success', 'Kode OTP baru telah dikirim ke email Anda.');
+        } catch (\Exception $e) {
+            report($e);
+            return $this->errorResponse('Terjadi kesalahan. Silakan coba lagi.');
+        }
     }
 
     /**

@@ -36,7 +36,13 @@
                 </div>
             @endif
 
-            @if(isset($devOtp))
+            @if(session('success'))
+                <div class="mb-4 p-3 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 rounded-lg text-sm">
+                    {{ session('success') }}
+                </div>
+            @endif
+
+            @if(app()->isLocal() && $devOtp)
                 <div class="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300 rounded-lg text-sm font-mono">
                     <span class="font-medium">DEV OTP:</span> {{ $devOtp }}
                 </div>
@@ -69,6 +75,23 @@
                     </span>
                 </button>
             </form>
+
+            <div class="mt-6 text-center">
+                <div class="text-sm text-gray-600 dark:text-gray-400"
+                     x-data="otpResendTimer('user_google_link_otp_countdown', 60, {{ (session('info') || session('success')) ? 'true' : 'false' }})">
+                    <p class="mb-2">Tidak menerima kode?</p>
+                    <form action="{{ route('auth.google.link.resend') }}" method="POST" class="inline">
+                        @csrf
+                        <button type="submit"
+                                class="font-medium transition-colors"
+                                :class="countdown > 0 ? 'text-gray-400 cursor-not-allowed' : 'text-primary-600 hover:text-primary-500 dark:text-primary-400'"
+                                :disabled="countdown > 0">
+                            <span x-show="countdown <= 0">Kirim ulang</span>
+                            <span x-show="countdown > 0">Kirim ulang dalam <span x-text="countdown"></span> detik</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
 
             <p class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
                 <a href="{{ route('login') }}" class="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400">Kembali ke halaman login</a>

@@ -51,6 +51,7 @@ Route::middleware('guest')->group(function () {
         Route::get('/auth/google/callback', [GoogleAuthController::class, 'callback'])->name('auth.google.callback');
         Route::get('/auth/google/link', [GoogleAuthController::class, 'showLinkForm'])->name('auth.google.link-form');
         Route::post('/auth/google/link', [GoogleAuthController::class, 'linkExisting'])->name('auth.google.link');
+        Route::post('/auth/google/link/resend', [GoogleAuthController::class, 'resendLinkOtp'])->middleware('throttle.auth:3,1')->name('auth.google.link.resend');
     });
 });
 
