@@ -157,7 +157,15 @@ class KycCaptureController extends Controller
             $filePath = $storagePath . '/' . $fileName;
 
             // Store temporarily
-            $this->storageService->tempDisk()->put($filePath, $imageData);
+            $tempDisk = $this->storageService->tempDisk();
+            $written = $tempDisk->put($filePath, $imageData);
+            if ($written === false) {
+                throw new \RuntimeException("Failed to write temp frame to disk: {$filePath}");
+            }
+
+            if (!$tempDisk->exists($filePath)) {
+                throw new \RuntimeException("Temp frame not found immediately after write: {$filePath}");
+            }
 
             // Store path server-side (never expose to client)
             $this->sessionService->storeFramePath(
@@ -307,6 +315,7 @@ class KycCaptureController extends Controller
             'kyc_id' => $kyc->id,
             'session_id' => $validated['session_id'],
             'temp_disk' => $this->storageService->getTempDiskName(),
+            'temp_disk_root' => config('filesystems.disks.' . $this->storageService->getTempDiskName() . '.root'),
             'temp_paths' => $framePaths,
         ]);
 

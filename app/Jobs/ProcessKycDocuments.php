@@ -61,6 +61,12 @@ class ProcessKycDocuments implements ShouldQueue
         KycStorageService $storageService
     ): void {
         try {
+            Log::info('KYC processing started', [
+                'kyc_id' => $this->kyc->id,
+                'temp_disk' => $this->tempDiskName,
+                'temp_disk_root' => config('filesystems.disks.' . $this->tempDiskName . '.root'),
+            ]);
+
             // Update status to processing
             $this->kyc->update(['status' => KycStatusEnum::PROCESSING]);
 
@@ -162,10 +168,12 @@ class ProcessKycDocuments implements ShouldQueue
         string $type
     ): array {
         $attempts = 3;
-        $lastError = null;
         $candidateDisks = $this->candidateTempDisks($storageService);
+        $attemptDiagnostics = [];
 
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            $diskDiagnostics = [];
+
             foreach ($candidateDisks as $diskName) {
                 try {
                     $disk = Storage::disk($diskName);
@@ -176,8 +184,12 @@ class ProcessKycDocuments implements ShouldQueue
                         // Non-local disks may not expose absolute path.
                     }
 
-                    if (!$disk->exists($tempPath)) {
-                        $lastError = "Temp file path missing on disk [{$diskName}]: {$tempPath}"
+                    $exists = method_exists($disk, 'fileExists')
+                        ? $disk->fileExists($tempPath)
+                        : $disk->exists($tempPath);
+
+                    if (!$exists) {
+                        $diskDiagnostics[] = "disk [{$diskName}] missing: {$tempPath}"
                             . ($absolutePath ? " (abs: {$absolutePath})" : '');
                         continue;
                     }
@@ -190,16 +202,24 @@ class ProcessKycDocuments implements ShouldQueue
                         ];
                     }
 
-                    $lastError = "Temp file unreadable/empty on disk [{$diskName}] at path: {$tempPath}";
+                    $diskDiagnostics[] = "disk [{$diskName}] unreadable/empty at path: {$tempPath}";
                 } catch (\Throwable $e) {
-                    $lastError = "Disk [{$diskName}] error: " . $e->getMessage();
+                    $diskDiagnostics[] = "disk [{$diskName}] error: " . $e->getMessage();
                 }
+            }
+
+            if (!empty($diskDiagnostics)) {
+                $attemptDiagnostics[] = "attempt {$attempt}: " . implode(' | ', $diskDiagnostics);
             }
 
             if ($attempt < $attempts) {
                 usleep(300000); // 300ms
             }
         }
+
+        $lastError = !empty($attemptDiagnostics)
+            ? implode(' || ', $attemptDiagnostics)
+            : 'unknown read error';
 
         throw new \Exception(
             "Temp file not found: {$type}. {$lastError}. Tried disks: " . implode(', ', $candidateDisks)
