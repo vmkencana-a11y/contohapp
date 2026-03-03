@@ -196,6 +196,18 @@ S3_KYC_PATH_STYLE=true</pre>
                              @if($setting->key === 'general.maintenance_end_time')
                              x-bind:class="{ 'hidden': !showMaintenanceEndTime() }"
                              @endif>
+                            @php
+                                $integerMin = match($setting->key) {
+                                    'security.session_idle_timeout' => 300,
+                                    'security.session_absolute_timeout' => 3600,
+                                    default => 0,
+                                };
+                                $integerHint = match($setting->key) {
+                                    'security.session_idle_timeout' => 'Unit: detik. Rekomendasi 900 (15 menit).',
+                                    'security.session_absolute_timeout' => 'Unit: detik. Rekomendasi 86400 (24 jam).',
+                                    default => null,
+                                };
+                            @endphp
                             <label for="{{ $setting->key }}" class="block text-sm font-medium leading-6 text-gray-900 dark:text-white mb-2">
                                 {{ $setting->label ?? ucwords(str_replace('_', ' ', $setting->key)) }}
                             </label>
@@ -211,6 +223,7 @@ S3_KYC_PATH_STYLE=true</pre>
                                 </select>
                             @elseif($setting->type === 'integer')
                                 <input type="number" name="settings[{{ $setting->key }}]" id="{{ $setting->key }}" value="{{ $setting->value }}"
+                                       min="{{ $integerMin }}" step="1"
                                        class="input-field w-full block">
                             @elseif($setting->type === 'text')
                                 <textarea name="settings[{{ $setting->key }}]" id="{{ $setting->key }}" rows="3"
@@ -226,6 +239,9 @@ S3_KYC_PATH_STYLE=true</pre>
                                        class="input-field w-full block">
                             @endif
                             <p class="mt-1 text-xs text-gray-500 font-mono">{{ $setting->key }}</p>
+                            @if($integerHint)
+                                <p class="mt-1 text-xs text-gray-500">{{ $integerHint }}</p>
+                            @endif
                         </div>
                         @endforeach
                     </div>

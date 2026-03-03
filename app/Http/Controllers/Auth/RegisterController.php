@@ -167,7 +167,17 @@ class RegisterController extends Controller
             }
             
             return redirect()->route('dashboard')
-                ->withCookie(cookie('session_token', $sessionData['token'], 60 * 24, '/', null, true, true, false, 'Strict'))
+                ->withCookie(cookie(
+                    'session_token',
+                    $sessionData['token'],
+                    60 * 24,
+                    config('session.path', '/'),
+                    config('session.domain'),
+                    (bool) config('session.secure', true),
+                    (bool) config('session.http_only', true),
+                    false,
+                    config('session.same_site', 'strict')
+                ))
                 ->with('success', 'Registrasi berhasil! Selamat datang di Sekuota.');
                 
         } catch (\Exception $e) {

@@ -278,8 +278,18 @@ class GoogleAuthController extends Controller
             'ip' => request()->ip(),
         ]);
 
-        // Set session cookie with security flags: HttpOnly, Secure, SameSite=Strict
-        $cookie = cookie('session_token', $sessionData['token'], 60 * 24, '/', null, true, true, false, 'Strict');
+        // Set session cookie aligned with app session cookie configuration.
+        $cookie = cookie(
+            'session_token',
+            $sessionData['token'],
+            60 * 24,
+            config('session.path', '/'),
+            config('session.domain'),
+            (bool) config('session.secure', true),
+            (bool) config('session.http_only', true),
+            false,
+            config('session.same_site', 'strict')
+        );
 
         return redirect()->route('dashboard')
             ->withCookie($cookie)

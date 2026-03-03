@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\UserSession;
 use App\Models\SystemSetting;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Session Service with configurable timeouts.
@@ -27,6 +28,8 @@ class SessionService
     private const ADMIN_IDLE_TIMEOUT = 900;     // 15 minutes
     private const ADMIN_ABSOLUTE_TIMEOUT = 43200; // 12 hours
     private const TOKEN_ROTATION_HOURS = 6;
+    private const MIN_IDLE_TIMEOUT = 300;       // 5 minutes
+    private const MIN_ABSOLUTE_TIMEOUT = 3600;  // 1 hour
     
     public function __construct(LoggingService $logger)
     {
@@ -47,8 +50,8 @@ class SessionService
             'token_hash' => $tokenHash,
             'ip_address' => request()->ip(),
             'user_agent' => request()->userAgent(),
-            'idle_timeout' => (int) SystemSetting::getValue('security.session_idle_timeout', self::USER_IDLE_TIMEOUT),
-            'absolute_timeout' => (int) SystemSetting::getValue('security.session_absolute_timeout', self::USER_ABSOLUTE_TIMEOUT),
+            'idle_timeout' => $this->resolveIdleTimeout(),
+            'absolute_timeout' => $this->resolveAbsoluteTimeout(),
         ]);
         
         // Log login
@@ -82,6 +85,10 @@ class SessionService
                 : 'absolute_timeout';
                 
             $session->revoke($reason);
+            Log::warning('User session expired', [
+                'user_id' => $session->user_id,
+                'reason' => $reason,
+            ]);
             
             $this->logger->logUserLogin($session->user_id, 'session_expired', [
                 'session_id_hash' => substr($session->token_hash, 0, 8),
@@ -91,14 +98,20 @@ class SessionService
         }
 
         // SECURITY: Validate IP and User-Agent binding to prevent token replay
-        $enforceIpBinding = (bool) SystemSetting::getValue('security.enforce_session_ip_binding', true);
-        if ($enforceIpBinding && $session->ip_address && $session->ip_address !== request()->ip()) {
+        $enforceIpBinding = (bool) SystemSetting::getValue('security.enforce_session_ip_binding', false);
+        $requestIp = request()->ip();
+        if ($enforceIpBinding && $session->ip_address && $requestIp && $session->ip_address !== $requestIp) {
             $session->revoke('ip_mismatch');
+            Log::warning('User session IP mismatch', [
+                'user_id' => $session->user_id,
+                'original_ip' => $session->ip_address,
+                'current_ip' => $requestIp,
+            ]);
             
             $this->logger->logUserLogin($session->user_id, 'session_ip_mismatch', [
                 'session_id_hash' => substr($session->token_hash, 0, 8),
                 'original_ip' => substr($session->ip_address, 0, -3) . '***',
-                'current_ip' => substr(request()->ip(), 0, -3) . '***',
+                'current_ip' => substr($requestIp, 0, -3) . '***',
             ]);
             
             return null;
@@ -184,5 +197,25 @@ class SessionService
                 $session->revoke('session_limit_exceeded');
             }
         }
+    }
+
+    /**
+     * Resolve idle timeout with defensive minimum.
+     */
+    private function resolveIdleTimeout(): int
+    {
+        $timeout = (int) SystemSetting::getValue('security.session_idle_timeout', self::USER_IDLE_TIMEOUT);
+
+        return max($timeout, self::MIN_IDLE_TIMEOUT);
+    }
+
+    /**
+     * Resolve absolute timeout with defensive minimum.
+     */
+    private function resolveAbsoluteTimeout(): int
+    {
+        $timeout = (int) SystemSetting::getValue('security.session_absolute_timeout', self::USER_ABSOLUTE_TIMEOUT);
+
+        return max($timeout, self::MIN_ABSOLUTE_TIMEOUT);
     }
 }

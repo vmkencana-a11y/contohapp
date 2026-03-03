@@ -56,6 +56,16 @@ class SystemSettingsController extends Controller
                 'label' => 'Maintenance End Time',
             ]
         );
+
+        SystemSetting::firstOrCreate(
+            ['key' => 'security.enforce_session_ip_binding'],
+            [
+                'value' => '0',
+                'type' => 'boolean',
+                'group' => 'security',
+                'label' => 'Enforce Session IP Binding',
+            ]
+        );
     }
 
     public function update(Request $request): RedirectResponse
@@ -70,6 +80,7 @@ class SystemSettingsController extends Controller
             'security.max_concurrent_sessions' => 'integer',
             'security.max_login_attempts' => 'integer',
             'security.lockout_duration' => 'integer',
+            'security.enforce_session_ip_binding' => 'boolean',
             // Boolean settings
             'general.maintenance_mode' => 'boolean',
             'general.maintenance_end_time' => 'datetime',
@@ -88,6 +99,11 @@ class SystemSettingsController extends Controller
         ];
 
         // Validate and sanitize inputs
+        $integerMinimums = [
+            'security.session_idle_timeout' => 300,      // 5 minutes
+            'security.session_absolute_timeout' => 3600, // 1 hour
+        ];
+
         $sanitized = [];
         foreach ($inputs as $key => $value) {
             if (!array_key_exists($key, $settingTypes)) {
@@ -100,7 +116,14 @@ class SystemSettingsController extends Controller
                     if (!is_numeric($value) || (int)$value < 0) {
                         return back()->withErrors(["settings.{$key}" => "Setting {$key} harus berupa angka positif."]);
                     }
-                    $sanitized[$key] = (int) $value;
+                    $intValue = (int) $value;
+                    $minimum = $integerMinimums[$key] ?? 0;
+                    if ($intValue < $minimum) {
+                        return back()->withErrors([
+                            "settings.{$key}" => "Setting {$key} minimal {$minimum} detik.",
+                        ]);
+                    }
+                    $sanitized[$key] = $intValue;
                     break;
                 case 'boolean':
                     // Checkboxes send "on", "1", or nothing

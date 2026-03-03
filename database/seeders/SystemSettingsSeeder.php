@@ -32,6 +32,13 @@ class SystemSettingsSeeder extends Seeder
                 'label' => 'Max Concurrent Sessions',
             ],
             [
+                'key' => 'security.enforce_session_ip_binding',
+                'value' => '0',
+                'type' => 'boolean',
+                'group' => 'security',
+                'label' => 'Enforce Session IP Binding',
+            ],
+            [
                 'key' => 'security.otp_ttl_minutes',
                 'value' => '5',
                 'type' => 'integer',

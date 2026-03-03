@@ -24,8 +24,15 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Trust proxies - configure in .env: TRUSTED_PROXIES=192.168.1.1,10.0.0.0/8
         // Use '*' only if behind a KNOWN trusted load balancer (e.g., AWS ALB, GCP LB)
-        $trustedProxies = env('TRUSTED_PROXIES', '127.0.0.1');
-        $middleware->trustProxies(at: $trustedProxies === '*' ? '*' : explode(',', $trustedProxies));
+        $trustedProxies = trim((string) env('TRUSTED_PROXIES', '127.0.0.1'));
+        if ($trustedProxies === '') {
+            $trustedProxies = '127.0.0.1';
+        }
+        $middleware->trustProxies(
+            at: $trustedProxies === '*'
+                ? '*'
+                : array_map('trim', explode(',', $trustedProxies))
+        );
         
         // Register middleware aliases
         $middleware->alias([

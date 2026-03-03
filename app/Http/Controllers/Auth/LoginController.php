@@ -129,8 +129,18 @@ class LoginController extends Controller
                 ]);
             }
             
-            // Set session cookie with security flags
-            $cookie = cookie('session_token', $sessionData['token'], 60 * 24, '/', null, true, true, false, 'Strict');
+            // Set session cookie aligned with app session cookie configuration.
+            $cookie = cookie(
+                'session_token',
+                $sessionData['token'],
+                60 * 24,
+                config('session.path', '/'),
+                config('session.domain'),
+                (bool) config('session.secure', true),
+                (bool) config('session.http_only', true),
+                false,
+                config('session.same_site', 'strict')
+            );
 
             session()->forget('otp_login_email');
             
