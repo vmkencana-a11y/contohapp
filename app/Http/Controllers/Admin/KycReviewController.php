@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\KycStatusUpdated;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -92,7 +93,12 @@ class KycReviewController extends Controller
             default => [null, null],
         };
 
-        if (!$path || !$this->storageService->disk()->exists($path)) {
+        if (!$path) {
+            abort(404, 'Image not found');
+        }
+
+        $disk = $this->resolveKycImageDisk($kyc, $path);
+        if (!$disk) {
             abort(404, 'Image not found');
         }
 
@@ -109,7 +115,7 @@ class KycReviewController extends Controller
         if ($encryptedKey) {
             // Decrypt file
             try {
-                $encryptedContent = $this->storageService->disk()->get($path);
+                $encryptedContent = $disk->get($path);
                 $decryptedContent = $this->encryptionService->decryptFromStorage(
                     $encryptedContent,
                     $encryptedKey
@@ -136,11 +142,40 @@ class KycReviewController extends Controller
         }
 
         // Legacy: unencrypted file (backward compatibility)
-        $content = $this->storageService->disk()->get($path);
+        $content = $disk->get($path);
         return response($content)
             ->header('Content-Type', 'image/jpeg')
             ->header('Cache-Control', 'no-store, no-cache, must-revalidate')
             ->header('Pragma', 'no-cache');
+    }
+
+    /**
+     * Resolve disk for a KYC image path with backward-compatible fallbacks.
+     */
+    private function resolveKycImageDisk(UserKyc $kyc, string $path): ?\Illuminate\Contracts\Filesystem\Filesystem
+    {
+        $availableDisks = array_keys((array) config('filesystems.disks', []));
+        $metadataDisk = is_array($kyc->metadata ?? null) ? ($kyc->metadata['storage_disk'] ?? null) : null;
+
+        $candidates = array_values(array_unique(array_filter([
+            $metadataDisk,
+            $this->storageService->getDiskName(),
+            'private',
+            's3_kyc',
+        ])));
+
+        foreach ($candidates as $diskName) {
+            if (!in_array($diskName, $availableDisks, true)) {
+                continue;
+            }
+
+            $disk = Storage::disk($diskName);
+            if ($disk->exists($path)) {
+                return $disk;
+            }
+        }
+
+        return null;
     }
 
     /**

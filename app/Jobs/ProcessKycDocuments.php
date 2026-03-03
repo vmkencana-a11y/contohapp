@@ -101,6 +101,9 @@ class ProcessKycDocuments implements ShouldQueue
             }
 
             // Update KYC record
+            $metadata = is_array($this->kyc->metadata) ? $this->kyc->metadata : [];
+            $metadata['storage_disk'] = $storageService->getDiskName();
+
             $this->kyc->update([
                 'status' => KycStatusEnum::PENDING,
                 'selfie_path' => $results['selfie']['path'],
@@ -112,6 +115,7 @@ class ProcessKycDocuments implements ShouldQueue
                 'encrypted_left_side_key' => $results['left_side']['key'],
                 'encrypted_right_side_key' => $results['right_side']['key'],
                 'key_version' => $results['selfie']['key_version'],
+                'metadata' => $metadata,
             ]);
 
             // Notify Admin

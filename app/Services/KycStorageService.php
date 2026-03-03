@@ -23,13 +23,21 @@ class KycStorageService
      */
     public function disk(): Filesystem
     {
+        return Storage::disk($this->getDiskName());
+    }
+
+    /**
+     * Get active disk name for final encrypted KYC files.
+     */
+    public function getDiskName(): string
+    {
         $driver = SystemSetting::getValue('kyc_storage.driver', 'local');
 
         if ($driver === 's3') {
-            return Storage::disk('s3_kyc');
+            return 's3_kyc';
         }
 
-        return Storage::disk('private');
+        return 'private';
     }
 
     /**
