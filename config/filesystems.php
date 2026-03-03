@@ -55,6 +55,15 @@ return [
             'report' => false,
         ],
 
+        'kyc_temp' => [
+            'driver' => 'local',
+            // Stable local path for KYC temp files across release-based deployments.
+            'root' => env('KYC_TEMP_ROOT', storage_path('app/private')),
+            'visibility' => 'private',
+            'throw' => false,
+            'report' => false,
+        ],
+
         's3' => [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),

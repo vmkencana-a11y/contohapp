@@ -43,7 +43,7 @@ class KycStorageService
     /**
      * Get the temporary storage disk.
      *
-     * Temp files are always stored on local private disk.
+     * Temp files are always stored on local disk.
      */
     public function tempDisk(): Filesystem
     {
@@ -55,7 +55,7 @@ class KycStorageService
      */
     public function getTempDiskName(): string
     {
-        return 'private';
+        return 'kyc_temp';
     }
 
     /**

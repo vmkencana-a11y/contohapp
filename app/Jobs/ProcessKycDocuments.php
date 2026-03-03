@@ -49,7 +49,7 @@ class ProcessKycDocuments implements ShouldQueue
         public string $tempIdCardPath,
         public string $tempLeftSidePath,
         public string $tempRightSidePath,
-        public string $tempDiskName = 'private'
+        public string $tempDiskName = 'kyc_temp'
     ) {}
 
     /**
@@ -212,7 +212,12 @@ class ProcessKycDocuments implements ShouldQueue
     private function candidateTempDisks(KycStorageService $storageService): array
     {
         $configuredDisks = array_keys((array) config('filesystems.disks', []));
-        $candidates = ['private'];
+        $candidates = array_values(array_unique(array_filter([
+            $this->tempDiskName,
+            $storageService->getTempDiskName(),
+            'kyc_temp',
+            'private',
+        ])));
 
         return array_values(array_filter($candidates, fn ($disk) => in_array($disk, $configuredDisks, true)));
     }
