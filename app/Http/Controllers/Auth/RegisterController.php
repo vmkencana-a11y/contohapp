@@ -166,11 +166,14 @@ class RegisterController extends Controller
                 ]);
             }
             
+            $cookieMinutes = $this->sessionService->resolveCookieLifetimeMinutes(
+                $sessionData['session']->absolute_timeout
+            );
             return redirect()->route('dashboard')
                 ->withCookie(cookie(
                     'session_token',
                     $sessionData['token'],
-                    60 * 24,
+                    $cookieMinutes,
                     config('session.path', '/'),
                     config('session.domain'),
                     (bool) config('session.secure', true),

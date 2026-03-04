@@ -335,10 +335,13 @@ class GoogleAuthController extends Controller
         ]);
 
         // Set session cookie aligned with app session cookie configuration.
+        $cookieMinutes = $this->sessionService->resolveCookieLifetimeMinutes(
+            $sessionData['session']->absolute_timeout
+        );
         $cookie = cookie(
             'session_token',
             $sessionData['token'],
-            60 * 24,
+            $cookieMinutes,
             config('session.path', '/'),
             config('session.domain'),
             (bool) config('session.secure', true),

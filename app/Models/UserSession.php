@@ -47,6 +47,8 @@ class UserSession extends Model
         return [
             'last_activity_at' => 'datetime',
             'created_at' => 'datetime',
+            'idle_timeout' => 'integer',
+            'absolute_timeout' => 'integer',
             'last_rotated_at' => 'datetime',
             'revoked_at' => 'datetime',
         ];

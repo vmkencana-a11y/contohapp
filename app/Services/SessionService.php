@@ -44,14 +44,16 @@ class SessionService
         // Generate secure token
         $token = Str::random(64);
         $tokenHash = hash('sha256', $token);
+        $idleTimeout = $this->resolveIdleTimeout();
+        $absoluteTimeout = $this->resolveAbsoluteTimeout();
         
         $session = UserSession::create([
             'user_id' => $user->id,
             'token_hash' => $tokenHash,
             'ip_address' => request()->ip(),
             'user_agent' => request()->userAgent(),
-            'idle_timeout' => $this->resolveIdleTimeout(),
-            'absolute_timeout' => $this->resolveAbsoluteTimeout(),
+            'idle_timeout' => $idleTimeout,
+            'absolute_timeout' => $absoluteTimeout,
         ]);
         
         // Log login
@@ -77,6 +79,9 @@ class SessionService
         if (!$session) {
             return null;
         }
+
+        // Keep active session timeout values aligned with current system settings.
+        $this->syncSessionTimeouts($session);
         
         // Check timeouts
         if (!$session->isValid()) {
@@ -200,6 +205,16 @@ class SessionService
     }
 
     /**
+     * Convert absolute timeout (seconds) into cookie lifetime (minutes).
+     */
+    public function resolveCookieLifetimeMinutes(?int $absoluteTimeout = null): int
+    {
+        $timeout = $absoluteTimeout ?? $this->resolveAbsoluteTimeout();
+
+        return max(1, (int) ceil($timeout / 60));
+    }
+
+    /**
      * Resolve idle timeout with defensive minimum.
      */
     private function resolveIdleTimeout(): int
@@ -217,5 +232,23 @@ class SessionService
         $timeout = (int) SystemSetting::getValue('security.session_absolute_timeout', self::USER_ABSOLUTE_TIMEOUT);
 
         return max($timeout, self::MIN_ABSOLUTE_TIMEOUT);
+    }
+
+    /**
+     * Sync persisted session timeout values with current system settings.
+     */
+    private function syncSessionTimeouts(UserSession $session): void
+    {
+        $idleTimeout = $this->resolveIdleTimeout();
+        $absoluteTimeout = $this->resolveAbsoluteTimeout();
+
+        if ($session->idle_timeout === $idleTimeout && $session->absolute_timeout === $absoluteTimeout) {
+            return;
+        }
+
+        $session->update([
+            'idle_timeout' => $idleTimeout,
+            'absolute_timeout' => $absoluteTimeout,
+        ]);
     }
 }
