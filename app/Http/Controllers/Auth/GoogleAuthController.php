@@ -426,7 +426,7 @@ class GoogleAuthController extends Controller
             return;
         }
 
-        logger()->info('google_oauth_debug', array_merge([
+        logger()->warning('google_oauth_debug', array_merge([
             'step' => $step,
             'host' => $request->getHost(),
             'scheme' => $request->getScheme(),
