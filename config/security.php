@@ -24,6 +24,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | OAuth Auth Cookie Override
+    |--------------------------------------------------------------------------
+    |
+    | OAuth callbacks are cross-site navigations (e.g., from accounts.google.com).
+    | Using SameSite=Strict for auth cookies can block the cookie on the immediate
+    | post-callback redirect. Default to Lax specifically for OAuth login flow.
+    |
+    */
+    'oauth_cookie' => [
+        'same_site' => env('OAUTH_COOKIE_SAME_SITE', env('SESSION_SAME_SITE', 'lax')),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Token Rotation
     |--------------------------------------------------------------------------
     |
@@ -35,4 +49,3 @@ return [
     'token_rotation_enabled' => env('AUTH_TOKEN_ROTATION_ENABLED', true),
     'token_rotation_hours' => (int) env('AUTH_TOKEN_ROTATION_HOURS', 6),
 ];
-

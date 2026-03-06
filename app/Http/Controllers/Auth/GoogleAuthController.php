@@ -408,11 +408,12 @@ class GoogleAuthController extends Controller
 
         // Create session token
         $sessionData = $this->sessionService->createUserSession($user);
+        $cookieSameSite = (string) config('security.oauth_cookie.same_site', config('session.same_site', 'lax'));
         $this->logOAuthDebug('login_user_session_created', request(), [
             'event_type' => $eventType,
             'user_id' => (string) $user->id,
             'session_token_hash' => $this->hashValue((string) ($sessionData['token'] ?? '')),
-            'auth_cookie_same_site' => (string) config('security.auth_cookie.same_site', ''),
+            'auth_cookie_same_site' => $cookieSameSite,
             'auth_cookie_domain' => (string) config('security.auth_cookie.domain', ''),
             'auth_cookie_secure' => (bool) config('security.auth_cookie.secure', false),
         ]);
@@ -432,7 +433,6 @@ class GoogleAuthController extends Controller
         $cookieDomain = config('security.auth_cookie.domain', config('session.domain'));
         $cookieSecure = (bool) config('security.auth_cookie.secure', (bool) config('session.secure', true));
         $cookieHttpOnly = (bool) config('security.auth_cookie.http_only', (bool) config('session.http_only', true));
-        $cookieSameSite = (string) config('security.auth_cookie.same_site', 'strict');
 
         $cookie = cookie(
             'session_token',
