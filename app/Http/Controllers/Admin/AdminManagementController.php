@@ -2,18 +2,20 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\ResolvesCurrentAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Models\Role;
 use App\Services\LoggingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class AdminManagementController extends Controller
 {
+    use ResolvesCurrentAdmin;
+
     public function __construct(
         private LoggingService $logger
     ) {}
@@ -58,7 +60,10 @@ class AdminManagementController extends Controller
             return back()->withErrors(['email' => 'Email sudah digunakan.'])->withInput();
         }
 
-        DB::transaction(function () use ($validated) {
+        $currentAdmin = $this->currentAdmin($request);
+        $currentAdminId = (int) $currentAdmin->id;
+
+        DB::transaction(function () use ($validated, $currentAdmin, $currentAdminId) {
             $admin = Admin::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
@@ -71,7 +76,6 @@ class AdminManagementController extends Controller
 
             // SECURITY: Prevent non-super-admins from assigning super_admin role
             $rolesToAssign = $validated['roles'];
-            $currentAdmin = Auth::guard('admin')->user();
             if (!$currentAdmin->hasRole('super_admin')) {
                 $superAdminRoleId = \App\Models\Role::where('name', 'super_admin')->value('id');
                 $rolesToAssign = array_filter($rolesToAssign, fn($id) => (int)$id !== (int)$superAdminRoleId);
@@ -83,7 +87,7 @@ class AdminManagementController extends Controller
             $admin->roles()->sync($rolesToAssign);
 
             $this->logger->logAdminActivity(
-                Auth::guard('admin')->id(),
+                $currentAdminId,
                 'admin.create',
                 'Admin',
                 (string)$admin->id,
@@ -109,7 +113,10 @@ class AdminManagementController extends Controller
 
     public function update(Request $request, Admin $admin): RedirectResponse
     {
-        if ($admin->id === Auth::guard('admin')->id()) {
+        $currentAdmin = $this->currentAdmin($request);
+        $currentAdminId = (int) $currentAdmin->id;
+
+        if ($admin->id === $currentAdminId) {
             return back()->with('error', 'Gunakan halaman Profil untuk mengubah data sendiri.');
         }
 
@@ -145,7 +152,7 @@ class AdminManagementController extends Controller
             return back()->withErrors(['email' => 'Email sudah digunakan.'])->withInput();
         }
 
-        DB::transaction(function () use ($admin, $validated, $request) {
+        DB::transaction(function () use ($admin, $validated, $request, $currentAdmin, $currentAdminId) {
             $data = [
                 'name' => $validated['name'],
                 'email' => $validated['email'],
@@ -161,7 +168,6 @@ class AdminManagementController extends Controller
             $admin->update($data);
             // SECURITY: Prevent non-super-admins from assigning super_admin role
             $rolesToAssign = $validated['roles'];
-            $currentAdmin = Auth::guard('admin')->user();
             if (!$currentAdmin->hasRole('super_admin')) {
                 $superAdminRoleId = \App\Models\Role::where('name', 'super_admin')->value('id');
                 $rolesToAssign = array_filter($rolesToAssign, fn($id) => (int)$id !== (int)$superAdminRoleId);
@@ -173,7 +179,7 @@ class AdminManagementController extends Controller
             $admin->roles()->sync($rolesToAssign);
 
             $this->logger->logAdminActivity(
-                Auth::guard('admin')->id(),
+                $currentAdminId,
                 'admin.update',
                 'Admin',
                 (string)$admin->id,
@@ -187,7 +193,9 @@ class AdminManagementController extends Controller
 
     public function toggleStatus(Admin $admin): RedirectResponse
     {
-        if ($admin->id === Auth::guard('admin')->id()) {
+        $currentAdminId = $this->currentAdminId();
+
+        if ($admin->id === $currentAdminId) {
             return back()->with('error', 'Tidak dapat mengubah status sendiri.');
         }
 
@@ -200,7 +208,7 @@ class AdminManagementController extends Controller
         $admin->update(['status' => $newStatus]);
 
         $this->logger->logAdminActivity(
-            Auth::guard('admin')->id(),
+            $currentAdminId,
             "admin.{$newStatus}",
             'Admin',
             (string)$admin->id,
@@ -212,7 +220,9 @@ class AdminManagementController extends Controller
 
     public function destroy(Admin $admin): RedirectResponse
     {
-        if ($admin->id === Auth::guard('admin')->id()) {
+        $currentAdminId = $this->currentAdminId();
+
+        if ($admin->id === $currentAdminId) {
             return back()->with('error', 'Tidak dapat menghapus akun sendiri.');
         }
 
@@ -223,7 +233,7 @@ class AdminManagementController extends Controller
         $admin->delete();
 
         $this->logger->logAdminActivity(
-            Auth::guard('admin')->id(),
+            $currentAdminId,
             'admin.delete',
             'Admin',
             (string)$admin->id,

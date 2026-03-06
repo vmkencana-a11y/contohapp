@@ -9,7 +9,6 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -44,7 +43,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Redirect authenticated users
         $middleware->redirectUsersTo(function (Request $request) {
-            if (Auth::guard('admin')->check()) {
+            if ($request->cookie('admin_token')) {
                 return route('admin.dashboard');
             }
             return route('dashboard');

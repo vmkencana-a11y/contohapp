@@ -2,18 +2,20 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\ResolvesCurrentAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Services\LoggingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class RoleController extends Controller
 {
+    use ResolvesCurrentAdmin;
+
     public function __construct(
         private LoggingService $logger
     ) {}
@@ -50,6 +52,8 @@ class RoleController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        $adminId = $this->currentAdminId($request);
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:50', 'unique:roles'],
             'description' => ['nullable', 'string', 'max:500'],
@@ -57,7 +61,7 @@ class RoleController extends Controller
             'permissions.*' => ['exists:permissions,id'],
         ]);
 
-        DB::transaction(function () use ($validated) {
+        DB::transaction(function () use ($validated, $adminId) {
             $role = Role::create([
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
@@ -68,7 +72,7 @@ class RoleController extends Controller
             }
 
             $this->logger->logAdminActivity(
-                Auth::guard('admin')->id(),
+                $adminId,
                 'role.create',
                 'Role',
                 (string)$role->id,
@@ -100,6 +104,8 @@ class RoleController extends Controller
      */
     public function update(Request $request, Role $role): RedirectResponse
     {
+        $adminId = $this->currentAdminId($request);
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:50', 'unique:roles,name,' . $role->id],
             'description' => ['nullable', 'string', 'max:500'],
@@ -107,7 +113,7 @@ class RoleController extends Controller
             'permissions.*' => ['exists:permissions,id'],
         ]);
 
-        DB::transaction(function () use ($role, $validated) {
+        DB::transaction(function () use ($role, $validated, $adminId) {
             $role->update([
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
@@ -116,7 +122,7 @@ class RoleController extends Controller
             $role->permissions()->sync($validated['permissions'] ?? []);
 
             $this->logger->logAdminActivity(
-                Auth::guard('admin')->id(),
+                $adminId,
                 'role.update',
                 'Role',
                 (string)$role->id,
@@ -135,6 +141,8 @@ class RoleController extends Controller
      */
     public function destroy(Role $role): RedirectResponse
     {
+        $adminId = $this->currentAdminId();
+
         if (in_array($role->name, ['super_admin', 'Super Admin'])) {
             return back()->with('error', 'Super Admin role tidak bisa dihapus.');
         }
@@ -146,7 +154,7 @@ class RoleController extends Controller
         $role->delete();
 
         $this->logger->logAdminActivity(
-            Auth::guard('admin')->id(),
+            $adminId,
             'role.delete',
             'Role',
             (string)$role->id,

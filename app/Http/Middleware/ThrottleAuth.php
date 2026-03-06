@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\RateLimiter;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -36,11 +37,20 @@ class ThrottleAuth
 
         $response = $next($request);
 
-        // Only count toward rate limit on failure (4xx/5xx)
-        if ($response->getStatusCode() >= 400) {
+        // Treat "redirect back with validation errors" as a failure for web flows (302).
+        // Many Laravel controllers return redirects on failure rather than 4xx codes.
+        $failed = $response->getStatusCode() >= 400;
+
+        if (!$failed && !$request->expectsJson() && $response instanceof RedirectResponse) {
+            $errors = $request->session()->get('errors');
+            if ($errors && (method_exists($errors, 'any') ? $errors->any() : count($errors->all()) > 0)) {
+                $failed = true;
+            }
+        }
+
+        if ($failed) {
             RateLimiter::hit($key, (int) $decayMinutes * 60);
         } else {
-            // Clear limiter on success
             RateLimiter::clear($key);
         }
 

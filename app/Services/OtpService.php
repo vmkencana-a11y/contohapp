@@ -111,6 +111,14 @@ class OtpService
             throw new \Exception('Terlalu banyak permintaan OTP. Silakan coba lagi nanti.');
         }
         
+        // Normalize referral code to match DB column (char(8)); ignore invalid input.
+        if ($referralCode !== null) {
+            $referralCode = strtoupper(trim($referralCode));
+            if (!preg_match('/^[A-Z0-9]{8}$/', $referralCode)) {
+                $referralCode = null;
+            }
+        }
+
         // Generate and store OTP
         $otp = $this->generateOtp();
         $otpHash = $this->hashOtp($otp);

@@ -9,7 +9,6 @@ use App\Services\LoggingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
@@ -66,6 +65,47 @@ class SystemSettingsController extends Controller
                 'label' => 'Enforce Session IP Binding',
             ]
         );
+
+        // Ensure core security settings exist so they can be managed via the UI.
+        SystemSetting::firstOrCreate(
+            ['key' => 'security.session_idle_timeout'],
+            [
+                'value' => '900',
+                'type' => 'integer',
+                'group' => 'security',
+                'label' => 'Session Idle Timeout (Seconds)',
+            ]
+        );
+
+        SystemSetting::firstOrCreate(
+            ['key' => 'security.session_absolute_timeout'],
+            [
+                'value' => '86400',
+                'type' => 'integer',
+                'group' => 'security',
+                'label' => 'Session Absolute Timeout (Seconds)',
+            ]
+        );
+
+        SystemSetting::firstOrCreate(
+            ['key' => 'security.admin_session_absolute_timeout'],
+            [
+                'value' => '43200',
+                'type' => 'integer',
+                'group' => 'security',
+                'label' => 'Admin Session Absolute Timeout (Seconds)',
+            ]
+        );
+
+        SystemSetting::firstOrCreate(
+            ['key' => 'security.max_concurrent_sessions'],
+            [
+                'value' => '5',
+                'type' => 'integer',
+                'group' => 'security',
+                'label' => 'Max Concurrent Sessions',
+            ]
+        );
     }
 
     public function update(Request $request): RedirectResponse
@@ -77,6 +117,7 @@ class SystemSettingsController extends Controller
             // Security settings (integers in seconds or counts)
             'security.session_idle_timeout' => 'integer',
             'security.session_absolute_timeout' => 'integer',
+            'security.admin_session_absolute_timeout' => 'integer',
             'security.max_concurrent_sessions' => 'integer',
             'security.max_login_attempts' => 'integer',
             'security.lockout_duration' => 'integer',
@@ -102,6 +143,8 @@ class SystemSettingsController extends Controller
         $integerMinimums = [
             'security.session_idle_timeout' => 300,      // 5 minutes
             'security.session_absolute_timeout' => 3600, // 1 hour
+            'security.admin_session_absolute_timeout' => 3600, // 1 hour
+            'security.max_concurrent_sessions' => 1,
         ];
 
         $sanitized = [];
@@ -161,13 +204,18 @@ class SystemSettingsController extends Controller
             }
         }
 
-        DB::transaction(function () use ($sanitized) {
+        $adminId = (int) optional($request->attributes->get('admin'))->id;
+        if ($adminId <= 0) {
+            abort(401, 'Admin tidak terautentikasi.');
+        }
+
+        DB::transaction(function () use ($sanitized, $adminId) {
             foreach ($sanitized as $key => $value) {
                 SystemSetting::setValue($key, $value);
             }
 
             $this->logger->logAdminActivity(
-                Auth::guard('admin')->id(),
+                $adminId,
                 'settings.update',
                 'SystemSetting',
                 'global',
@@ -184,9 +232,13 @@ class SystemSettingsController extends Controller
     public function testKycStorage(): JsonResponse
     {
         $result = $this->kycStorage->testConnection();
+        $adminId = (int) optional(request()->attributes->get('admin'))->id;
+        if ($adminId <= 0) {
+            abort(401, 'Admin tidak terautentikasi.');
+        }
 
         $this->logger->logAdminActivity(
-            Auth::guard('admin')->id(),
+            $adminId,
             'settings.kyc_storage.test',
             'SystemSetting',
             'kyc_storage',

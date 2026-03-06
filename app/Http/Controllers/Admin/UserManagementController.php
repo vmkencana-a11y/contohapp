@@ -6,16 +6,18 @@ use App\Actions\User\BanUserAction;
 use App\Actions\User\ReactivateUserAction;
 use App\Actions\User\SuspendUserAction;
 use App\Enums\UserStatusEnum;
+use App\Http\Controllers\Admin\Concerns\ResolvesCurrentAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 class UserManagementController extends Controller
 {
+    use ResolvesCurrentAdmin;
+
     public function __construct(
         private SuspendUserAction $suspendAction,
         private BanUserAction $banAction,
@@ -94,8 +96,7 @@ class UserManagementController extends Controller
         ]);
 
         try {
-            $admin = Auth::guard('admin')->user();
-            $this->suspendAction->execute($user, $admin->id, $validated['reason']);
+            $this->suspendAction->execute($user, $this->currentAdminId($request), $validated['reason']);
 
             return $this->successResponse('User berhasil ditangguhkan.');
         } catch (\Exception $e) {
@@ -115,8 +116,7 @@ class UserManagementController extends Controller
         ]);
 
         try {
-            $admin = Auth::guard('admin')->user();
-            $this->banAction->execute($user, $admin->id, $validated['reason']);
+            $this->banAction->execute($user, $this->currentAdminId($request), $validated['reason']);
 
             return $this->successResponse('User berhasil diblokir secara permanen.');
         } catch (\Exception $e) {
@@ -132,8 +132,7 @@ class UserManagementController extends Controller
         $reason = $request->input('reason', 'Reactivated by admin');
 
         try {
-            $admin = Auth::guard('admin')->user();
-            $this->reactivateAction->execute($user, $admin->id, $reason);
+            $this->reactivateAction->execute($user, $this->currentAdminId($request), $reason);
 
             return $this->successResponse('User berhasil diaktifkan kembali.');
         } catch (\Exception $e) {

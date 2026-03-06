@@ -56,26 +56,16 @@ class RegisterController extends Controller
                 return $this->errorResponse($blockMessage);
             }
             
-            // SECURITY: Return same response whether email exists or not (prevent enumeration)
+            // Block registration when email already exists.
             if (User::findByEmail($data['email'])) {
-                // Don't send OTP, but return identical success response
-                if ($request->expectsJson()) {
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Kode OTP telah dikirim ke email Anda.',
-                        'redirect' => route('register.verify-otp'),
-                    ]);
-                }
-                return redirect()->route('register.verify-otp')
-                    ->with('success', 'Kode OTP telah dikirim ke email Anda.');
+                return $this->errorResponse('Email sudah terdaftar. Silakan login.');
             }
             
-            // Validate referral code if provided
+            // If referral code is invalid or inactive, ignore it (do not block registration flow).
             if (!empty($data['referral_code'])) {
-                $referrer = User::findByReferralCode($data['referral_code']);
-                if (!$referrer || !$referrer->isActive()) {
-                    return $this->errorResponse('Kode referral tidak valid atau sudah tidak aktif.');
-                }
+                $code = strtoupper(trim((string) $data['referral_code']));
+                $referrer = User::findByReferralCode($code);
+                $data['referral_code'] = ($referrer && $referrer->isActive()) ? $code : null;
             }
             
             $otp = $this->otpService->requestRegistrationOtp(
@@ -154,33 +144,49 @@ class RegisterController extends Controller
             
             // Clear registration session data
             session()->forget('registration_data');
+
+            // Prevent Laravel session fixation after privilege change (user created + auto-login).
+            $request->session()->regenerate();
+            $request->session()->regenerateToken();
             
             // Create session (auto-login)
             $sessionData = $this->sessionService->createUserSession($user);
             
+            $cookieMinutes = $this->sessionService->resolveCookieLifetimeMinutes(
+                $sessionData['session']->absolute_timeout
+            );
+
+            $cookiePath = (string) config('security.auth_cookie.path', config('session.path', '/'));
+            $cookieDomain = config('security.auth_cookie.domain', config('session.domain'));
+            $cookieSecure = (bool) config('security.auth_cookie.secure', (bool) config('session.secure', true));
+            $cookieHttpOnly = (bool) config('security.auth_cookie.http_only', (bool) config('session.http_only', true));
+            $cookieSameSite = (string) config('security.auth_cookie.same_site', 'strict');
+
+            $cookie = cookie(
+                'session_token',
+                $sessionData['token'],
+                $cookieMinutes,
+                $cookiePath,
+                $cookieDomain,
+                $cookieSecure,
+                $cookieHttpOnly,
+                false,
+                $cookieSameSite
+            );
+
             if ($request->expectsJson()) {
                 return response()->json([
                     'success' => true,
                     'message' => 'Registrasi berhasil! Selamat datang.',
                     'redirect' => route('dashboard'),
-                ]);
+                    'token' => $sessionData['token'],
+                    'token_type' => 'Bearer',
+                    'expires_in' => (int) $sessionData['session']->absolute_timeout,
+                ])->withCookie($cookie);
             }
-            
-            $cookieMinutes = $this->sessionService->resolveCookieLifetimeMinutes(
-                $sessionData['session']->absolute_timeout
-            );
+
             return redirect()->route('dashboard')
-                ->withCookie(cookie(
-                    'session_token',
-                    $sessionData['token'],
-                    $cookieMinutes,
-                    config('session.path', '/'),
-                    config('session.domain'),
-                    (bool) config('session.secure', true),
-                    (bool) config('session.http_only', true),
-                    false,
-                    config('session.same_site', 'strict')
-                ))
+                ->withCookie($cookie)
                 ->with('success', 'Registrasi berhasil! Selamat datang di Sekuota.');
                 
         } catch (\Exception $e) {

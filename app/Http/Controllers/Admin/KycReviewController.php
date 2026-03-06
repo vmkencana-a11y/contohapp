@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\KycStatusEnum;
+use App\Http\Controllers\Admin\Concerns\ResolvesCurrentAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\Logs\KycFileAccessLog;
 use App\Models\UserKyc;
@@ -12,7 +13,6 @@ use App\Services\LoggingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\KycStatusUpdated;
 use Illuminate\Support\Facades\Storage;
@@ -21,6 +21,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class KycReviewController extends Controller
 {
+    use ResolvesCurrentAdmin;
+
     public function __construct(
         private LoggingService $logger,
         private KycEncryptionService $encryptionService,
@@ -77,7 +79,7 @@ class KycReviewController extends Controller
      */
     public function serveImage(UserKyc $kyc, string $type): Response
     {
-        $admin = Auth::guard('admin')->user();
+        $admin = $this->currentAdmin();
 
         // Check breach flag
         if ($kyc->breach_flag) {
@@ -202,7 +204,7 @@ class KycReviewController extends Controller
             return $this->errorResponse('KYC tidak dapat diproses karena investigasi keamanan.');
         }
 
-        $admin = Auth::guard('admin')->user();
+        $admin = $this->currentAdmin();
         $kyc->approve($admin->id);
 
         $this->logger->logAdminActivity(
@@ -237,7 +239,7 @@ class KycReviewController extends Controller
             return $this->errorResponse('KYC tidak dapat diproses karena investigasi keamanan.');
         }
 
-        $admin = Auth::guard('admin')->user();
+        $admin = $this->currentAdmin($request);
         $kyc->reject($admin->id, $validated['reason']);
 
         $this->logger->logAdminActivity(
@@ -259,7 +261,7 @@ class KycReviewController extends Controller
      */
     public function flagBreach(UserKyc $kyc): JsonResponse|RedirectResponse
     {
-        $admin = Auth::guard('admin')->user();
+        $admin = $this->currentAdmin();
         
         $kyc->update(['breach_flag' => true]);
 

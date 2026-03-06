@@ -3,17 +3,19 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Enums\BlacklistTypeEnum;
+use App\Http\Controllers\Admin\Concerns\ResolvesCurrentAdmin;
 use App\Http\Controllers\Controller;
 use App\Models\RegistrationBlacklist;
 use App\Services\LoggingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class BlacklistController extends Controller
 {
+    use ResolvesCurrentAdmin;
+
     public function __construct(
         private LoggingService $logger
     ) {}
@@ -63,6 +65,8 @@ class BlacklistController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        $adminId = $this->currentAdminId($request);
+
         $validated = $request->validate([
             'type' => ['required', Rule::enum(BlacklistTypeEnum::class)],
             'value' => ['required', 'string', 'max:255'],
@@ -89,11 +93,11 @@ class BlacklistController extends Controller
             'value' => $validated['value'],
             'reason' => $validated['reason'],
             'expires_at' => $validated['expires_at'],
-            'created_by' => Auth::guard('admin')->id(),
+            'created_by' => $adminId,
         ]);
 
         $this->logger->logAdminActivity(
-            Auth::guard('admin')->id(),
+            $adminId,
             'blacklist.create',
             'RegistrationBlacklist',
             (string)$entry->id,
@@ -120,6 +124,8 @@ class BlacklistController extends Controller
      */
     public function update(Request $request, RegistrationBlacklist $blacklist): RedirectResponse
     {
+        $adminId = $this->currentAdminId($request);
+
         $validated = $request->validate([
             'type' => ['required', Rule::enum(BlacklistTypeEnum::class)],
             'value' => ['required', 'string', 'max:255'],
@@ -145,7 +151,7 @@ class BlacklistController extends Controller
         $blacklist->update($validated);
 
         $this->logger->logAdminActivity(
-            Auth::guard('admin')->id(),
+            $adminId,
             'blacklist.update',
             'RegistrationBlacklist',
             (string)$blacklist->id,
@@ -161,13 +167,15 @@ class BlacklistController extends Controller
      */
     public function destroy(RegistrationBlacklist $blacklist): RedirectResponse
     {
+        $adminId = $this->currentAdminId();
+
         $type = $blacklist->type->value;
         $value = $blacklist->value;
 
         $blacklist->delete();
 
         $this->logger->logAdminActivity(
-            Auth::guard('admin')->id(),
+            $adminId,
             'blacklist.delete',
             'RegistrationBlacklist',
             (string)$blacklist->id,

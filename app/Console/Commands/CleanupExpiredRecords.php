@@ -4,8 +4,10 @@ namespace App\Console\Commands;
 
 use App\Models\AdminOtp;
 use App\Models\PreUserOtp;
+use App\Models\AdminSession;
 use App\Models\UserSession;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class CleanupExpiredRecords extends Command
@@ -78,13 +80,22 @@ class CleanupExpiredRecords extends Command
         // =============================================
         $this->line('');
         $this->info('User Sessions:');
-        
-        // Clean inactive sessions (older than configured lifetime * 2)
-        $sessionLifetime = config('session.lifetime', 120);
-        $sessionCount = UserSession::where('last_activity_at', '<', now()->subMinutes($sessionLifetime * 2))
-            ->delete();
-        $this->line("  - Inactive sessions: {$sessionCount}");
-        $totalDeleted += $sessionCount;
+
+        $expiredSql = $this->expiredSessionSql();
+
+        $userSessionCount = UserSession::where(function ($q) use ($expiredSql) {
+            $q->whereRaw($expiredSql)->orWhereNotNull('revoked_at');
+        })->delete();
+        $this->line("  - Expired / revoked sessions: {$userSessionCount}");
+        $totalDeleted += $userSessionCount;
+
+        $this->line('');
+        $this->info('Admin Sessions:');
+        $adminSessionCount = AdminSession::where(function ($q) use ($expiredSql) {
+            $q->whereRaw($expiredSql)->orWhereNotNull('revoked_at');
+        })->delete();
+        $this->line("  - Expired / revoked sessions: {$adminSessionCount}");
+        $totalDeleted += $adminSessionCount;
         
         // =============================================
         // Summary
@@ -97,11 +108,30 @@ class CleanupExpiredRecords extends Command
             Log::channel('daily')->info('Sekuota cleanup completed', [
                 'pre_user_otps' => $otpCount + $verifiedCount + $lockedCount,
                 'admin_otps' => $adminExpiredCount + $adminVerifiedCount + $adminLockedCount,
-                'sessions' => $sessionCount,
+                'user_sessions' => $userSessionCount,
+                'admin_sessions' => $adminSessionCount,
                 'total' => $totalDeleted,
             ]);
         }
         
         return self::SUCCESS;
+    }
+
+    /**
+     * Build a DB-driver specific SQL expression for "expired custom session".
+     *
+     * Custom sessions expire when either:
+     * - idle timeout is exceeded, or
+     * - absolute timeout is exceeded.
+     */
+    private function expiredSessionSql(): string
+    {
+        $driver = DB::getDriverName();
+
+        return match ($driver) {
+            'pgsql' => "(EXTRACT(EPOCH FROM (NOW() - last_activity_at)) > idle_timeout OR EXTRACT(EPOCH FROM (NOW() - created_at)) > absolute_timeout)",
+            'sqlite' => "((strftime('%s','now') - strftime('%s', last_activity_at)) > idle_timeout OR (strftime('%s','now') - strftime('%s', created_at)) > absolute_timeout)",
+            default => "(TIMESTAMPDIFF(SECOND, last_activity_at, NOW()) > idle_timeout OR TIMESTAMPDIFF(SECOND, created_at, NOW()) > absolute_timeout)",
+        };
     }
 }

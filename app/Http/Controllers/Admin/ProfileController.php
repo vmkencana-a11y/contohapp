@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Http\Controllers\Admin\Concerns\ResolvesCurrentAdmin;
 use App\Http\Controllers\Controller;
 use App\Services\LoggingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
@@ -15,6 +15,8 @@ use PragmaRX\Google2FA\Google2FA;
 
 class ProfileController extends Controller
 {
+    use ResolvesCurrentAdmin;
+
     public function __construct(
         private LoggingService $logger
     ) {}
@@ -24,7 +26,7 @@ class ProfileController extends Controller
      */
     public function index(): View
     {
-        $admin = Auth::guard('admin')->user();
+        $admin = $this->currentAdmin();
         
         return view('admin.profile.index', [
             'admin' => $admin,
@@ -36,7 +38,7 @@ class ProfileController extends Controller
      */
     public function edit(): View
     {
-        $admin = Auth::guard('admin')->user();
+        $admin = $this->currentAdmin();
         
         return view('admin.profile.edit', [
             'admin' => $admin,
@@ -48,7 +50,7 @@ class ProfileController extends Controller
      */
     public function update(Request $request): RedirectResponse
     {
-        $admin = Auth::guard('admin')->user();
+        $admin = $this->currentAdmin($request);
         
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:100'],
@@ -71,7 +73,7 @@ class ProfileController extends Controller
         $admin->update($validated);
 
         $this->logger->logAdminActivity(
-            (string)$admin->id,
+            (int) $admin->id,
             'profile.updated',
             'Admin',
             (string)$admin->id
@@ -86,7 +88,7 @@ class ProfileController extends Controller
      */
     public function updatePassword(Request $request): RedirectResponse
     {
-        $admin = Auth::guard('admin')->user();
+        $admin = $this->currentAdmin($request);
         
         $validated = $request->validate([
             'current_password' => ['required', 'string'],
@@ -106,7 +108,7 @@ class ProfileController extends Controller
         $admin->update(['password' => $validated['password']]);
 
         $this->logger->logAdminActivity(
-            (string)$admin->id,
+            (int) $admin->id,
             'password.changed',
             'Admin',
             (string)$admin->id
@@ -121,7 +123,7 @@ class ProfileController extends Controller
      */
     public function setup2fa(): View|RedirectResponse
     {
-        $admin = Auth::guard('admin')->user();
+        $admin = $this->currentAdmin();
         
         if ($admin->has2faEnabled()) {
             return redirect()->route('admin.profile.edit')
@@ -166,7 +168,7 @@ class ProfileController extends Controller
             return $this->errorResponse('Kode verifikasi salah.');
         }
 
-        $admin = Auth::guard('admin')->user();
+        $admin = $this->currentAdmin($request);
         $admin->update([
             'google_2fa_secret' => $secret, // Model handles encryption
             // 'two_factor_enabled_at' => now(), // Not in fillable/model
@@ -175,7 +177,7 @@ class ProfileController extends Controller
         session()->forget('2fa_secret');
 
         $this->logger->logAdminActivity(
-            (string)$admin->id,
+            (int) $admin->id,
             'security.2fa_enabled',
             'Admin',
             (string)$admin->id
@@ -202,7 +204,7 @@ class ProfileController extends Controller
             'password' => ['required', 'string'],
         ]);
 
-        $admin = Auth::guard('admin')->user();
+        $admin = $this->currentAdmin($request);
 
         if (!$admin->checkPassword($validated['password'])) {
             return $this->errorResponse('Password salah.');
@@ -214,7 +216,7 @@ class ProfileController extends Controller
         ]);
 
         $this->logger->logAdminActivity(
-            (string)$admin->id,
+            (int) $admin->id,
             'security.2fa_disabled',
             'Admin',
             (string)$admin->id

@@ -9,10 +9,10 @@ use App\Models\AdminOtp;
 use App\Services\LoggingService;
 use App\Services\NotificationService;
 use App\Services\OtpService;
+use App\Services\SessionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\View\View;
 
 /**
@@ -28,7 +28,8 @@ class AuthController extends Controller
     public function __construct(
         private OtpService $otpService,
         private NotificationService $notificationService,
-        private LoggingService $logger
+        private LoggingService $logger,
+        private SessionService $sessionService
     ) {}
 
     /**
@@ -270,14 +271,15 @@ class AuthController extends Controller
             return $this->errorResponse('Login di luar jam kerja tidak diizinkan.');
         }
 
-        // Clear auth session
+        // Clear intermediate auth session data
         session()->forget(['admin_auth_id', 'admin_auth_step']);
 
         // SECURITY: Regenerate session ID to prevent session fixation attacks
         $request->session()->regenerate();
+        $request->session()->regenerateToken();
 
-        // Login
-        Auth::guard('admin')->login($admin);
+        // Create custom token-based session for admin
+        $sessionData = $this->sessionService->createAdminSession($admin);
         $admin->update(['last_login_at' => now()]);
 
         $this->logger->logAdminActivity(
@@ -289,15 +291,42 @@ class AuthController extends Controller
             ['layers_passed' => $admin->has2faEnabled() ? 3 : 2]
         );
 
+        // Build admin_token cookie aligned with session absolute_timeout
+        $cookieMinutes = $this->sessionService->resolveCookieLifetimeMinutes(
+            $sessionData['session']->absolute_timeout
+        );
+
+        $cookiePath = (string) config('security.auth_cookie.path', config('session.path', '/'));
+        $cookieDomain = config('security.auth_cookie.domain', config('session.domain'));
+        $cookieSecure = (bool) config('security.auth_cookie.secure', (bool) config('session.secure', true));
+        $cookieHttpOnly = (bool) config('security.auth_cookie.http_only', (bool) config('session.http_only', true));
+        $cookieSameSite = (string) config('security.auth_cookie.same_site', 'strict');
+
+        $cookie = cookie(
+            'admin_token',
+            $sessionData['token'],
+            $cookieMinutes,
+            $cookiePath,
+            $cookieDomain,
+            $cookieSecure,
+            $cookieHttpOnly,
+            false,
+            $cookieSameSite
+        );
+
         if ($request->expectsJson()) {
             return response()->json([
-                'success' => true,
-                'message' => 'Login berhasil!',
+                'success'  => true,
+                'message'  => 'Login berhasil!',
                 'redirect' => route('admin.dashboard'),
-            ]);
+                'token' => $sessionData['token'],
+                'token_type' => 'Bearer',
+                'expires_in' => (int) $sessionData['session']->absolute_timeout,
+            ])->withCookie($cookie);
         }
 
         return redirect()->route('admin.dashboard')
+            ->withCookie($cookie)
             ->with('success', 'Selamat datang, ' . $admin->name);
     }
 
@@ -361,22 +390,20 @@ class AuthController extends Controller
      */
     public function logout(Request $request): RedirectResponse
     {
-        $admin = Auth::guard('admin')->user();
-        
-        if ($admin) {
-            $this->logger->logAdminActivity(
-                (string)$admin->id,
-                'admin.logout',
-                'Admin',
-                (string)$admin->id
-            );
+        $session = $request->attributes->get('admin_session');
+
+        if ($session) {
+            $this->sessionService->revokeAdminSession($session, 'admin_logout');
         }
 
-        Auth::guard('admin')->logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        $forgetCookie = cookie()->forget(
+            'admin_token',
+            (string) config('security.auth_cookie.path', config('session.path', '/')),
+            config('security.auth_cookie.domain', config('session.domain'))
+        );
 
         return redirect()->route('admin.login')
+            ->withCookie($forgetCookie)
             ->with('success', 'Anda telah logout.');
     }
 

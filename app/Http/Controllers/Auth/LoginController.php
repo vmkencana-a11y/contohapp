@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\VerifyOtpRequest;
+use App\Domains\User\UserStateMachine;
+use App\Enums\UserStatusEnum;
 use App\Models\User;
 use App\Services\OtpService;
 use App\Services\SessionService;
@@ -114,38 +116,58 @@ class LoginController extends Controller
             if (!$user || !$user->canLogin()) {
                 return $this->errorResponse('Akun tidak valid.');
             }
+
+            // If the user is INACTIVE, activate them after successful OTP verification.
+            if ($user->status === UserStatusEnum::INACTIVE) {
+                UserStateMachine::for($user)->activate('OTP login verified');
+                $user->refresh();
+            }
             
             // Update last login
             $user->update(['last_login_at' => now()]);
+
+            // Prevent Laravel session fixation after privilege change (OTP verified).
+            $request->session()->regenerate();
+            $request->session()->regenerateToken();
             
             // Create session
             $sessionData = $this->sessionService->createUserSession($user);
-            
-            if ($request->expectsJson()) {
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Login berhasil!',
-                    'redirect' => route('dashboard'),
-                ]);
-            }
             
             // Set session cookie aligned with app session cookie configuration.
             $cookieMinutes = $this->sessionService->resolveCookieLifetimeMinutes(
                 $sessionData['session']->absolute_timeout
             );
+
+            $cookiePath = (string) config('security.auth_cookie.path', config('session.path', '/'));
+            $cookieDomain = config('security.auth_cookie.domain', config('session.domain'));
+            $cookieSecure = (bool) config('security.auth_cookie.secure', (bool) config('session.secure', true));
+            $cookieHttpOnly = (bool) config('security.auth_cookie.http_only', (bool) config('session.http_only', true));
+            $cookieSameSite = (string) config('security.auth_cookie.same_site', 'strict');
+
             $cookie = cookie(
                 'session_token',
                 $sessionData['token'],
                 $cookieMinutes,
-                config('session.path', '/'),
-                config('session.domain'),
-                (bool) config('session.secure', true),
-                (bool) config('session.http_only', true),
+                $cookiePath,
+                $cookieDomain,
+                $cookieSecure,
+                $cookieHttpOnly,
                 false,
-                config('session.same_site', 'strict')
+                $cookieSameSite
             );
 
             session()->forget('otp_login_email');
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Login berhasil!',
+                    'redirect' => route('dashboard'),
+                    'token' => $sessionData['token'],
+                    'token_type' => 'Bearer',
+                    'expires_in' => (int) $sessionData['session']->absolute_timeout,
+                ])->withCookie($cookie);
+            }
             
             return redirect()->route('dashboard')
                 ->withCookie($cookie)
@@ -208,9 +230,15 @@ class LoginController extends Controller
         if ($session) {
             $this->sessionService->revokeSession($session);
         }
+
+        $forgetCookie = cookie()->forget(
+            'session_token',
+            (string) config('security.auth_cookie.path', config('session.path', '/')),
+            config('security.auth_cookie.domain', config('session.domain'))
+        );
         
         return redirect()->route('login')
-            ->withCookie(cookie()->forget('session_token'))
+            ->withCookie($forgetCookie)
             ->with('success', 'Anda telah logout.');
     }
 

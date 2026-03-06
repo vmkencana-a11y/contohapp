@@ -25,6 +25,27 @@ class SystemSettingsSeeder extends Seeder
                 'label' => 'Maintenance End Time',
             ],
             [
+                'key' => 'security.session_idle_timeout',
+                'value' => '900',
+                'type' => 'integer',
+                'group' => 'security',
+                'label' => 'Session Idle Timeout (Seconds)',
+            ],
+            [
+                'key' => 'security.session_absolute_timeout',
+                'value' => '86400',
+                'type' => 'integer',
+                'group' => 'security',
+                'label' => 'Session Absolute Timeout (Seconds)',
+            ],
+            [
+                'key' => 'security.admin_session_absolute_timeout',
+                'value' => '43200',
+                'type' => 'integer',
+                'group' => 'security',
+                'label' => 'Admin Session Absolute Timeout (Seconds)',
+            ],
+            [
                 'key' => 'security.max_concurrent_sessions',
                 'value' => '5',
                 'type' => 'integer',

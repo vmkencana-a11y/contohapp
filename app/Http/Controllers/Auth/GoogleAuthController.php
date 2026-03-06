@@ -324,6 +324,7 @@ class GoogleAuthController extends Controller
 
         // Regenerate session (prevent fixation)
         session()->regenerate();
+        session()->regenerateToken();
 
         // Create session token
         $sessionData = $this->sessionService->createUserSession($user);
@@ -338,16 +339,23 @@ class GoogleAuthController extends Controller
         $cookieMinutes = $this->sessionService->resolveCookieLifetimeMinutes(
             $sessionData['session']->absolute_timeout
         );
+
+        $cookiePath = (string) config('security.auth_cookie.path', config('session.path', '/'));
+        $cookieDomain = config('security.auth_cookie.domain', config('session.domain'));
+        $cookieSecure = (bool) config('security.auth_cookie.secure', (bool) config('session.secure', true));
+        $cookieHttpOnly = (bool) config('security.auth_cookie.http_only', (bool) config('session.http_only', true));
+        $cookieSameSite = (string) config('security.auth_cookie.same_site', 'strict');
+
         $cookie = cookie(
             'session_token',
             $sessionData['token'],
             $cookieMinutes,
-            config('session.path', '/'),
-            config('session.domain'),
-            (bool) config('session.secure', true),
-            (bool) config('session.http_only', true),
+            $cookiePath,
+            $cookieDomain,
+            $cookieSecure,
+            $cookieHttpOnly,
             false,
-            config('session.same_site', 'strict')
+            $cookieSameSite
         );
 
         return redirect()->route('dashboard')

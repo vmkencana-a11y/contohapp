@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Admin;
+use App\Models\AdminSession;
 use App\Models\User;
 use App\Models\UserSession;
 use App\Models\SystemSetting;
@@ -23,13 +25,13 @@ class SessionService
     /**
      * Default timeout configuration (in seconds).
      */
-    private const USER_IDLE_TIMEOUT = 900;      // 15 minutes
-    private const USER_ABSOLUTE_TIMEOUT = 86400; // 24 hours
-    private const ADMIN_IDLE_TIMEOUT = 900;     // 15 minutes
-    private const ADMIN_ABSOLUTE_TIMEOUT = 43200; // 12 hours
+    private const USER_IDLE_TIMEOUT = 900;        // 15 minutes
+    private const USER_ABSOLUTE_TIMEOUT = 86400;  // 24 hours
+    private const ADMIN_IDLE_TIMEOUT = 900;        // 15 minutes
+    private const ADMIN_ABSOLUTE_TIMEOUT = 43200;  // 12 hours
     private const TOKEN_ROTATION_HOURS = 6;
-    private const MIN_IDLE_TIMEOUT = 300;       // 5 minutes
-    private const MIN_ABSOLUTE_TIMEOUT = 3600;  // 1 hour
+    private const MIN_IDLE_TIMEOUT = 300;          // 5 minutes
+    private const MIN_ABSOLUTE_TIMEOUT = 3600;     // 1 hour
     
     public function __construct(LoggingService $logger)
     {
@@ -55,6 +57,9 @@ class SessionService
             'idle_timeout' => $idleTimeout,
             'absolute_timeout' => $absoluteTimeout,
         ]);
+
+        // Enforce concurrent session limit (revoke oldest if exceeded).
+        $this->enforceSessionLimit($user->id);
         
         // Log login
         $this->logger->logUserLogin($user->id, 'login', [
@@ -125,14 +130,6 @@ class SessionService
         // Update last activity
         $session->touch();
         
-        // NOTE: Token rotation disabled until cookie update mechanism is implemented.
-        // Auto-rotation would invalidate the client's token without sending the new one.
-        // TODO: Implement rotation via response headers or session refresh endpoint.
-        // if ($session->needsRotation(self::TOKEN_ROTATION_HOURS)) {
-        //     $newToken = $this->rotateToken($session);
-        //     // Need to send $newToken back to client somehow
-        // }
-        
         return $session;
     }
 
@@ -146,6 +143,19 @@ class SessionService
         
         $session->rotateToken($newTokenHash);
         
+        return $newToken;
+    }
+
+    /**
+     * Rotate admin session token.
+     */
+    public function rotateAdminToken(AdminSession $session): string
+    {
+        $newToken = Str::random(64);
+        $newTokenHash = hash('sha256', $newToken);
+
+        $session->rotateToken($newTokenHash);
+
         return $newToken;
     }
 
@@ -183,12 +193,122 @@ class SessionService
             ->count();
     }
 
+    // ==========================================
+    // Admin Session Methods
+    // ==========================================
+
+    /**
+     * Create a new session for admin.
+     */
+    public function createAdminSession(Admin $admin): array
+    {
+        $token = Str::random(64);
+        $tokenHash = hash('sha256', $token);
+        $idleTimeout = $this->resolveAdminIdleTimeout();
+        $absoluteTimeout = $this->resolveAdminAbsoluteTimeout();
+
+        $session = AdminSession::create([
+            'admin_id'         => $admin->id,
+            'token_hash'       => $tokenHash,
+            'ip_address'       => request()->ip(),
+            'user_agent'       => request()->userAgent(),
+            'idle_timeout'     => $idleTimeout,
+            'absolute_timeout' => $absoluteTimeout,
+        ]);
+
+        $this->logger->logAdminActivity(
+            (string) $admin->id,
+            'admin.session_created',
+            'AdminSession',
+            (string) $session->id,
+            null,
+            ['session_id_hash' => substr($tokenHash, 0, 8)]
+        );
+
+        return [
+            'token'   => $token,
+            'session' => $session,
+        ];
+    }
+
+    /**
+     * Validate admin session by token.
+     */
+    public function validateAdminSession(string $token): ?AdminSession
+    {
+        $session = AdminSession::findByToken($token);
+
+        if (!$session) {
+            return null;
+        }
+
+        // Sync idle timeout only (absolute_timeout must not change after creation)
+        $this->syncAdminSessionTimeouts($session);
+
+        if (!$session->isValid()) {
+            $reason = $session->hasIdleTimeoutExpired()
+                ? 'idle_timeout'
+                : 'absolute_timeout';
+
+            $session->revoke($reason);
+            Log::warning('Admin session expired', [
+                'admin_id' => $session->admin_id,
+                'reason'   => $reason,
+            ]);
+
+            return null;
+        }
+
+        // IP binding check
+        $enforceIpBinding = (bool) SystemSetting::getValue('security.enforce_session_ip_binding', false);
+        $requestIp = request()->ip();
+        if ($enforceIpBinding && $session->ip_address && $requestIp && $session->ip_address !== $requestIp) {
+            $session->revoke('ip_mismatch');
+            Log::warning('Admin session IP mismatch', [
+                'admin_id'     => $session->admin_id,
+                'original_ip'  => $session->ip_address,
+                'current_ip'   => $requestIp,
+            ]);
+            return null;
+        }
+
+        $session->touch();
+
+        return $session;
+    }
+
+    /**
+     * Revoke admin session (logout).
+     */
+    public function revokeAdminSession(AdminSession $session, string $reason = 'admin_logout'): void
+    {
+        $session->revoke($reason);
+
+        $this->logger->logAdminActivity(
+            (string) $session->admin_id,
+            'admin.logout',
+            'AdminSession',
+            (string) $session->id,
+            null,
+            ['session_id_hash' => substr($session->token_hash, 0, 8)]
+        );
+    }
+
+    /**
+     * Revoke all admin sessions (forced logout).
+     */
+    public function revokeAllAdminSessions(string $adminId, string $reason = 'forced_logout'): int
+    {
+        return AdminSession::revokeAllForAdmin($adminId, $reason);
+    }
+
     /**
      * Revoke oldest sessions if limit exceeded.
      */
     public function enforceSessionLimit(string $userId, int $maxSessions = 5): void
     {
         $limit = (int) SystemSetting::getValue('security.max_concurrent_sessions', $maxSessions);
+        $limit = max(1, $limit);
         
         $sessions = UserSession::where('user_id', $userId)
             ->whereNull('revoked_at')
@@ -215,7 +335,7 @@ class SessionService
     }
 
     /**
-     * Resolve idle timeout with defensive minimum.
+     * Resolve user idle timeout with defensive minimum.
      */
     private function resolveIdleTimeout(): int
     {
@@ -225,7 +345,7 @@ class SessionService
     }
 
     /**
-     * Resolve absolute timeout with defensive minimum.
+     * Resolve user absolute timeout with defensive minimum.
      */
     private function resolveAbsoluteTimeout(): int
     {
@@ -235,20 +355,61 @@ class SessionService
     }
 
     /**
-     * Sync persisted session timeout values with current system settings.
+     * Resolve admin idle timeout.
+     * Admins share the same idle timeout setting as users.
+     */
+    private function resolveAdminIdleTimeout(): int
+    {
+        $timeout = (int) SystemSetting::getValue('security.session_idle_timeout', self::ADMIN_IDLE_TIMEOUT);
+
+        return max($timeout, self::MIN_IDLE_TIMEOUT);
+    }
+
+    /**
+     * Resolve admin absolute timeout (defaults to 12 hours, stricter than users).
+     */
+    private function resolveAdminAbsoluteTimeout(): int
+    {
+        $timeout = (int) SystemSetting::getValue('security.admin_session_absolute_timeout', self::ADMIN_ABSOLUTE_TIMEOUT);
+
+        return max($timeout, self::MIN_ABSOLUTE_TIMEOUT);
+    }
+
+    /**
+     * Sync idle timeout with current settings for a user session.
+     * 
+     * NOTE: absolute_timeout is intentionally NOT synced here.
+     * The absolute timeout timer starts at session creation (created_at) and
+     * must never be extended for an already-active session, otherwise an admin
+     * increasing the global setting would silently extend existing live sessions.
      */
     private function syncSessionTimeouts(UserSession $session): void
     {
         $idleTimeout = $this->resolveIdleTimeout();
-        $absoluteTimeout = $this->resolveAbsoluteTimeout();
 
-        if ($session->idle_timeout === $idleTimeout && $session->absolute_timeout === $absoluteTimeout) {
+        if ($session->idle_timeout === $idleTimeout) {
             return;
         }
 
         $session->update([
             'idle_timeout' => $idleTimeout,
-            'absolute_timeout' => $absoluteTimeout,
+        ]);
+    }
+
+    /**
+     * Sync idle timeout with current settings for an admin session.
+     * Same rule applies: absolute_timeout is NOT synced after creation.
+     */
+    private function syncAdminSessionTimeouts(AdminSession $session): void
+    {
+        $idleTimeout = $this->resolveAdminIdleTimeout();
+
+        if ($session->idle_timeout === $idleTimeout) {
+            return;
+        }
+
+        $session->update([
+            'idle_timeout' => $idleTimeout,
         ]);
     }
 }
