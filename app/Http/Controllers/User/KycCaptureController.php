@@ -168,6 +168,22 @@ class KycCaptureController extends Controller
                 throw new \RuntimeException("Temp frame not found immediately after write: {$filePath}");
             }
 
+            $existingFramePaths = $this->sessionService->getFramePaths($validated['session_id']);
+            $previousPath = $existingFramePaths[$validated['type']] ?? null;
+            if ($previousPath && $previousPath !== $filePath) {
+                try {
+                    $tempDisk->delete($previousPath);
+                } catch (\Throwable $deleteError) {
+                    Log::warning('Failed to remove superseded KYC temp frame', [
+                        'session_id' => $validated['session_id'],
+                        'type' => $validated['type'],
+                        'old_path' => $previousPath,
+                        'new_path' => $filePath,
+                        'error' => $deleteError->getMessage(),
+                    ]);
+                }
+            }
+
             // Store path server-side (never expose to client)
             $this->sessionService->storeFramePath(
                 $validated['session_id'],

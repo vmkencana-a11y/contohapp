@@ -163,9 +163,6 @@ class LoginController extends Controller
                     'success' => true,
                     'message' => 'Login berhasil!',
                     'redirect' => route('dashboard'),
-                    'token' => $sessionData['token'],
-                    'token_type' => 'Bearer',
-                    'expires_in' => (int) $sessionData['session']->absolute_timeout,
                 ])->withCookie($cookie);
             }
             

@@ -34,7 +34,6 @@ class KycSessionService
      * Redis key prefixes.
      */
     private const SESSION_PREFIX = 'kyc:session:';
-    private const NONCE_PREFIX = 'kyc:nonce:';
 
     /**
      * Start a new KYC capture session.
@@ -57,6 +56,7 @@ class KycSessionService
                 'expires_at' => $expiresAt,
                 'frame_count' => 0,
                 'challenges_completed' => [],
+                'active_nonces' => [],
                 'status' => 'active',
             ])
         );
@@ -103,31 +103,49 @@ class KycSessionService
      */
     public function generateNonce(string $sessionId): array
     {
-        $session = $this->getSessionData($sessionId);
-        
-        if (!$session) {
-            throw new \RuntimeException('Session not found');
-        }
-
-        if ($session['frame_count'] >= self::MAX_FRAMES) {
-            throw new \RuntimeException('Max frames reached');
-        }
-
-        // Generate cryptographically secure nonce (256-bit)
         $nonce = bin2hex(random_bytes(32));
         $expiresAt = now()->addSeconds(self::NONCE_TTL)->timestamp;
+        $now = now()->timestamp;
 
-        // Store nonce in Redis (bound to session)
-        Redis::setex(
-            $this->nonceKey($sessionId, $nonce),
-            self::NONCE_TTL,
-            json_encode([
-                'session_id' => $sessionId,
-                'created_at' => now()->timestamp,
-                'expires_at' => $expiresAt,
-                'consumed' => false,
-            ])
-        );
+        $luaScript = <<<'LUA'
+            local sessionData = redis.call('GET', KEYS[1])
+            if not sessionData then return 0 end
+
+            local session = cjson.decode(sessionData)
+            if session['status'] ~= 'active' then return 0 end
+
+            local ttl = redis.call('TTL', KEYS[1])
+            if ttl <= 0 then return 0 end
+
+            local activeNonces = {}
+            local activeCount = 0
+
+            if session['active_nonces'] then
+                for key, expiry in pairs(session['active_nonces']) do
+                    if tonumber(expiry) and tonumber(expiry) > tonumber(ARGV[3]) then
+                        activeNonces[key] = expiry
+                        activeCount = activeCount + 1
+                    end
+                end
+            end
+
+            local frameCount = tonumber(session['frame_count'] or 0)
+            if (frameCount + activeCount) >= tonumber(ARGV[4]) then
+                return 0
+            end
+
+            activeNonces[ARGV[1]] = tonumber(ARGV[2])
+            session['active_nonces'] = activeNonces
+
+            redis.call('SETEX', KEYS[1], ttl, cjson.encode(session))
+            return 1
+        LUA;
+
+        $stored = (int) Redis::eval($luaScript, 1, $this->sessionKey($sessionId), $nonce, $expiresAt, $now, self::MAX_FRAMES);
+
+        if ($stored !== 1) {
+            throw new \RuntimeException('Max frames reached or session not active');
+        }
 
         return [
             'nonce' => $nonce,
@@ -142,36 +160,39 @@ class KycSessionService
      */
     public function consumeNonce(string $sessionId, string $nonce): bool
     {
-        $key = $this->nonceKey($sessionId, $nonce);
-        $sessionKey = $this->sessionKey($sessionId);
-
-        // Atomic: validate nonce + delete + increment frame count in one round-trip
         $luaScript = <<<'LUA'
-            local nonceData = redis.call('GET', KEYS[1])
-            if not nonceData then return 0 end
-            
-            local data = cjson.decode(nonceData)
-            if data['consumed'] then return 0 end
-            if data['session_id'] ~= ARGV[1] then return 0 end
-            
-            -- Delete nonce immediately (single-use)
-            redis.call('DEL', KEYS[1])
-            
-            -- Atomic increment frame count in session
-            local sessionData = redis.call('GET', KEYS[2])
-            if sessionData then
-                local session = cjson.decode(sessionData)
-                session['frame_count'] = (session['frame_count'] or 0) + 1
-                local ttl = redis.call('TTL', KEYS[2])
-                if ttl > 0 then
-                    redis.call('SETEX', KEYS[2], ttl, cjson.encode(session))
+            local sessionData = redis.call('GET', KEYS[1])
+            if not sessionData then return 0 end
+
+            local session = cjson.decode(sessionData)
+            if session['status'] ~= 'active' then return 0 end
+
+            local ttl = redis.call('TTL', KEYS[1])
+            if ttl <= 0 then return 0 end
+
+            local activeNonces = {}
+            if session['active_nonces'] then
+                for key, expiry in pairs(session['active_nonces']) do
+                    if tonumber(expiry) and tonumber(expiry) > tonumber(ARGV[2]) then
+                        activeNonces[key] = expiry
+                    end
                 end
             end
-            
+
+            if not activeNonces[ARGV[1]] then return 0 end
+
+            local frameCount = tonumber(session['frame_count'] or 0)
+            if frameCount >= tonumber(ARGV[3]) then return 0 end
+
+            activeNonces[ARGV[1]] = nil
+            session['active_nonces'] = activeNonces
+            session['frame_count'] = frameCount + 1
+
+            redis.call('SETEX', KEYS[1], ttl, cjson.encode(session))
             return 1
         LUA;
 
-        return (bool) Redis::eval($luaScript, 2, $key, $sessionKey, $sessionId);
+        return (bool) Redis::eval($luaScript, 1, $this->sessionKey($sessionId), $nonce, now()->timestamp, self::MAX_FRAMES);
     }
 
     /**
@@ -187,6 +208,7 @@ class KycSessionService
 
         $session['status'] = 'completed';
         $session['completed_at'] = now()->timestamp;
+        $session['active_nonces'] = [];
 
         // Keep session data for a while for reference
         Redis::setex(
@@ -257,11 +279,4 @@ class KycSessionService
         return self::SESSION_PREFIX . $sessionId;
     }
 
-    /**
-     * Get nonce key.
-     */
-    private function nonceKey(string $sessionId, string $nonce): string
-    {
-        return self::NONCE_PREFIX . $sessionId . ':' . $nonce;
-    }
 }

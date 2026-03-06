@@ -179,9 +179,6 @@ class RegisterController extends Controller
                     'success' => true,
                     'message' => 'Registrasi berhasil! Selamat datang.',
                     'redirect' => route('dashboard'),
-                    'token' => $sessionData['token'],
-                    'token_type' => 'Bearer',
-                    'expires_in' => (int) $sessionData['session']->absolute_timeout,
                 ])->withCookie($cookie);
             }
 
