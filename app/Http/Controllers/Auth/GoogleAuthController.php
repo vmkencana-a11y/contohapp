@@ -152,12 +152,22 @@ class GoogleAuthController extends Controller
         // 1. Try to find user by google_sub (already linked)
         $user = User::findByGoogleSub($googleUser['sub']);
         if ($user) {
+            $this->logOAuthDebug('callback_user_found_by_google_sub', $request, [
+                'user_id' => (string) $user->id,
+                'user_status' => (string) $user->status->value,
+            ]);
             return $this->loginUser($user, 'google_login', $googleUser);
         }
 
         // 2. Check if email matches an existing user (not yet linked)
         $existingUser = User::findByEmail($googleUser['email']);
         if ($existingUser) {
+            $this->logOAuthDebug('callback_existing_email_found', $request, [
+                'user_id' => (string) $existingUser->id,
+                'user_status' => (string) $existingUser->status->value,
+                'queue_default' => (string) config('queue.default', ''),
+            ]);
+
             // Store Google data in session for OTP linking flow
             session()->put('google_link_data', [
                 'google_sub' => $googleUser['sub'],
@@ -178,8 +188,18 @@ class GoogleAuthController extends Controller
                 if (app()->isLocal()) {
                     session()->flash('dev_otp', $otp);
                 }
+
+                $this->logOAuthDebug('callback_link_otp_dispatched', $request, [
+                    'user_id' => (string) $existingUser->id,
+                    'queue_default' => (string) config('queue.default', ''),
+                ]);
             } catch (\Exception $e) {
                 report($e);
+                $this->logOAuthDebug('callback_link_otp_send_failed', $request, [
+                    'user_id' => (string) $existingUser->id,
+                    'error_type' => class_basename($e),
+                    'error_message' => $e->getMessage(),
+                ]);
 
                 return redirect()->route('auth.google.link-form')
                     ->withErrors(['otp' => 'Gagal mengirim kode OTP. Silakan coba kirim ulang.']);
@@ -205,7 +225,14 @@ class GoogleAuthController extends Controller
                 ->with('error', 'Registrasi tidak dapat dilakukan saat ini.');
         }
 
+        $this->logOAuthDebug('callback_new_user_create_start', $request, [
+            'google_email_hash' => $this->hashValue((string) ($googleUser['email'] ?? '')),
+        ]);
         $user = $this->createGoogleUser($googleUser);
+        $this->logOAuthDebug('callback_new_user_created', $request, [
+            'user_id' => (string) $user->id,
+            'user_status' => (string) $user->status->value,
+        ]);
         return $this->loginUser($user, 'google_register', $googleUser);
     }
 
@@ -356,7 +383,18 @@ class GoogleAuthController extends Controller
      */
     private function loginUser(User $user, string $eventType, array $googleUser): RedirectResponse
     {
+        $this->logOAuthDebug('login_user_start', request(), [
+            'event_type' => $eventType,
+            'user_id' => (string) $user->id,
+            'user_status' => (string) $user->status->value,
+        ]);
+
         if (!$user->canLogin()) {
+            $this->logOAuthDebug('login_user_blocked_status', request(), [
+                'event_type' => $eventType,
+                'user_id' => (string) $user->id,
+                'user_status' => (string) $user->status->value,
+            ]);
             return redirect()->route('login')
                 ->with('error', 'Akun Anda tidak aktif. Hubungi customer service.');
         }
@@ -370,6 +408,14 @@ class GoogleAuthController extends Controller
 
         // Create session token
         $sessionData = $this->sessionService->createUserSession($user);
+        $this->logOAuthDebug('login_user_session_created', request(), [
+            'event_type' => $eventType,
+            'user_id' => (string) $user->id,
+            'session_token_hash' => $this->hashValue((string) ($sessionData['token'] ?? '')),
+            'auth_cookie_same_site' => (string) config('security.auth_cookie.same_site', ''),
+            'auth_cookie_domain' => (string) config('security.auth_cookie.domain', ''),
+            'auth_cookie_secure' => (bool) config('security.auth_cookie.secure', false),
+        ]);
 
         // Log the event
         $this->logger->logSecurityEvent($eventType, (string) $user->id, 'low', [
@@ -399,6 +445,12 @@ class GoogleAuthController extends Controller
             false,
             $cookieSameSite
         );
+
+        $this->logOAuthDebug('login_user_redirect_dashboard', request(), [
+            'event_type' => $eventType,
+            'user_id' => (string) $user->id,
+            'cookie_minutes' => $cookieMinutes,
+        ]);
 
         return redirect()->route('dashboard')
             ->withCookie($cookie)
