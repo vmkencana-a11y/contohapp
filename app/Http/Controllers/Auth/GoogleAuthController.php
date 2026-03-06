@@ -33,6 +33,12 @@ class GoogleAuthController extends Controller
      */
     public function redirect(Request $request): RedirectResponse
     {
+        $this->logOAuthDebug('redirect_start', $request, [
+            'oauth_enabled' => $this->googleService->isEnabled(),
+            'session_cookie_present' => $request->hasCookie((string) config('session.cookie')),
+            'session_cookie_name' => (string) config('session.cookie'),
+        ]);
+
         // Check if Google OAuth is enabled
         if (!$this->googleService->isEnabled()) {
             return redirect()->route('login')
@@ -46,6 +52,13 @@ class GoogleAuthController extends Controller
         session()->put('google_oauth', [
             'state' => $authData['state'],
             'code_verifier' => $authData['code_verifier'],
+        ]);
+
+        $this->logOAuthDebug('redirect_session_saved', $request, [
+            'state_hash' => $this->hashValue($authData['state']),
+            'code_verifier_hash' => $this->hashValue($authData['code_verifier']),
+            'redirect_uri' => (string) config('services.google.redirect_uri'),
+            'google_url_host' => parse_url($authData['url'], PHP_URL_HOST),
         ]);
 
         return redirect()->away($authData['url']);
@@ -62,6 +75,14 @@ class GoogleAuthController extends Controller
      */
     public function callback(Request $request): RedirectResponse
     {
+        $this->logOAuthDebug('callback_start', $request, [
+            'has_code' => $request->has('code'),
+            'has_state' => $request->has('state'),
+            'has_error' => $request->has('error'),
+            'google_error' => (string) $request->get('error', ''),
+            'session_cookie_present' => $request->hasCookie((string) config('session.cookie')),
+        ]);
+
         // Check if Google OAuth is enabled
         if (!$this->googleService->isEnabled()) {
             return redirect()->route('login')
@@ -82,7 +103,19 @@ class GoogleAuthController extends Controller
 
         // Validate state (anti-CSRF)
         $oauthSession = session()->pull('google_oauth');
-        if (!$oauthSession || !hash_equals($oauthSession['state'], $request->get('state'))) {
+        $expectedState = (string) ($oauthSession['state'] ?? '');
+        $incomingState = (string) $request->get('state', '');
+        $stateMatch = !empty($expectedState) && !empty($incomingState) && hash_equals($expectedState, $incomingState);
+
+        $this->logOAuthDebug('callback_state_check', $request, [
+            'has_oauth_session' => !empty($oauthSession),
+            'has_oauth_state' => !empty($expectedState),
+            'state_match' => $stateMatch,
+            'expected_state_hash' => $this->hashValue($expectedState),
+            'incoming_state_hash' => $this->hashValue($incomingState),
+        ]);
+
+        if (!$oauthSession || !$stateMatch) {
             $this->logger->logSecurityEvent('google_oauth_state_mismatch', 'anonymous', 'high', [
                 'event_category' => 'csrf_attempt',
             ]);
@@ -98,12 +131,21 @@ class GoogleAuthController extends Controller
             );
         } catch (\RuntimeException $e) {
             report($e);
+            $this->logOAuthDebug('callback_token_error', $request, [
+                'error_type' => class_basename($e),
+                'error_message' => $e->getMessage(),
+            ]);
             $this->logger->logSecurityEvent('google_oauth_token_error', 'anonymous', 'high', [
                 'error_type' => class_basename($e),
             ]);
             return redirect()->route('login')
                 ->with('error', 'Verifikasi Google gagal. Silakan coba lagi.');
         }
+
+        $this->logOAuthDebug('callback_token_verified', $request, [
+            'google_sub_hash' => $this->hashValue((string) ($googleUser['sub'] ?? '')),
+            'google_email_hash' => $this->hashValue((string) ($googleUser['email'] ?? '')),
+        ]);
 
         // === User Matching Logic ===
 
@@ -376,5 +418,38 @@ class GoogleAuthController extends Controller
         }
 
         return back()->withErrors(['otp' => $message]);
+    }
+
+    private function logOAuthDebug(string $step, Request $request, array $context = []): void
+    {
+        if (!(bool) config('services.google.debug', false)) {
+            return;
+        }
+
+        logger()->info('google_oauth_debug', array_merge([
+            'step' => $step,
+            'host' => $request->getHost(),
+            'scheme' => $request->getScheme(),
+            'path' => $request->path(),
+            'method' => $request->method(),
+            'session_driver' => (string) config('session.driver'),
+            'session_secure' => (bool) config('session.secure', false),
+            'session_same_site' => (string) config('session.same_site', 'lax'),
+            'session_domain' => config('session.domain'),
+            'session_id_hash' => $this->hashValue($request->session()->getId()),
+            'app_url' => (string) config('app.url'),
+            'google_redirect_uri' => (string) config('services.google.redirect_uri'),
+            'x_forwarded_proto' => (string) $request->headers->get('x-forwarded-proto', ''),
+            'x_forwarded_host' => (string) $request->headers->get('x-forwarded-host', ''),
+        ], $context));
+    }
+
+    private function hashValue(?string $value): ?string
+    {
+        if (empty($value)) {
+            return null;
+        }
+
+        return substr(hash('sha256', $value), 0, 16);
     }
 }
