@@ -12,7 +12,8 @@ use Illuminate\Support\Facades\Storage;
  *
  * Central resolver for KYC file storage disk.
  * Reads driver preference from SystemSetting (local or s3).
- * S3 credentials are configured in .env, NOT in the database.
+ * S3 credentials are resolved from runtime config, which may come from .env
+ * or from the Secret Manager database.
  */
 class KycStorageService
 {
@@ -83,7 +84,7 @@ class KycStorageService
     }
 
     /**
-     * Check if S3 credentials are configured in .env.
+     * Check if S3 credentials are configured in runtime config.
      */
     public function isS3Configured(): bool
     {
@@ -103,7 +104,7 @@ class KycStorageService
         if (!$this->isS3Configured()) {
             return [
                 'success' => false,
-                'message' => 'Konfigurasi S3 belum lengkap. Pastikan S3_KYC_ENDPOINT, S3_KYC_BUCKET, S3_KYC_KEY, dan S3_KYC_SECRET sudah diisi di file .env.',
+                'message' => 'Konfigurasi secret S3 belum lengkap. Pastikan endpoint, bucket, access key, dan secret key sudah diisi di Secret Manager.',
                 'latency_ms' => null,
             ];
         }

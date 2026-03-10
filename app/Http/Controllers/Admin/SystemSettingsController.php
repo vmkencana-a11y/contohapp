@@ -195,7 +195,7 @@ class SystemSettingsController extends Controller
                         return back()->withErrors(["settings.{$key}" => "Pilihan driver tidak valid."]);
                     }
                     if ($value === 's3' && !$this->kycStorage->isS3Configured()) {
-                        return back()->withErrors(["settings.{$key}" => "Konfigurasi S3 belum lengkap di .env. Pastikan S3_KYC_ENDPOINT, S3_KYC_BUCKET, S3_KYC_KEY, dan S3_KYC_SECRET sudah diisi."]);
+                        return back()->withErrors(["settings.{$key}" => "Konfigurasi secret S3 belum lengkap. Lengkapi dulu data `s3_kyc` di Secret Manager."]);
                     }
                     $sanitized[$key] = $value;
                     break;

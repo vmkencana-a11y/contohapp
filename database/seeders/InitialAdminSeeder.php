@@ -55,6 +55,10 @@ class InitialAdminSeeder extends Seeder
             ['name' => 'settings.view', 'description' => 'View system settings', 'module' => 'settings'],
             ['name' => 'settings.manage', 'description' => 'Modify system settings', 'module' => 'settings'],
             ['name' => 'settings.edit', 'description' => 'Edit system settings', 'module' => 'settings'],
+
+            // Secret Manager
+            ['name' => 'secrets.view', 'description' => 'View secret manager', 'module' => 'secrets'],
+            ['name' => 'secrets.manage', 'description' => 'Create/edit/delete secrets', 'module' => 'secrets'],
             
             // Logs & Monitoring
             ['name' => 'logs.view', 'description' => 'View activity logs', 'module' => 'logs'],

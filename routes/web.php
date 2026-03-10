@@ -10,6 +10,7 @@ use App\Http\Controllers\User\ProfileController;
 use App\Http\Controllers\User\ReferralController;
 use App\Http\Controllers\Admin\AuthController as AdminAuthController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
+use App\Http\Controllers\Admin\SecretController;
 use App\Http\Controllers\Admin\UserManagementController;
 use App\Http\Controllers\Admin\KycReviewController;
 use Illuminate\Support\Facades\Route;
@@ -204,5 +205,27 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::post('/settings/kyc-storage/test', [App\Http\Controllers\Admin\SystemSettingsController::class, 'testKycStorage'])
             ->middleware('auth.admin:settings.manage')
             ->name('settings.kyc-storage.test');
+
+        Route::post('/secrets/refresh-cache', [SecretController::class, 'refreshCache'])
+            ->middleware('auth.admin:secrets.manage')
+            ->name('secrets.refresh-cache');
+        Route::get('/secrets', [SecretController::class, 'index'])
+            ->middleware('auth.admin:secrets.view')
+            ->name('secrets.index');
+        Route::get('/secrets/create', [SecretController::class, 'create'])
+            ->middleware('auth.admin:secrets.manage')
+            ->name('secrets.create');
+        Route::post('/secrets', [SecretController::class, 'store'])
+            ->middleware('auth.admin:secrets.manage')
+            ->name('secrets.store');
+        Route::get('/secrets/{secret}/edit', [SecretController::class, 'edit'])
+            ->middleware('auth.admin:secrets.manage')
+            ->name('secrets.edit');
+        Route::put('/secrets/{secret}', [SecretController::class, 'update'])
+            ->middleware('auth.admin:secrets.manage')
+            ->name('secrets.update');
+        Route::delete('/secrets/{secret}', [SecretController::class, 'destroy'])
+            ->middleware('auth.admin:secrets.manage')
+            ->name('secrets.destroy');
     });
 });

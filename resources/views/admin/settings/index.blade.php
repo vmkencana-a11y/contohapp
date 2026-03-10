@@ -134,13 +134,13 @@
                                         <svg class="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
                                         <div class="text-sm">
                                             <p class="font-medium text-amber-800 dark:text-amber-200">Konfigurasi S3 belum lengkap</p>
-                                            <p class="mt-1 text-amber-700 dark:text-amber-300">Tambahkan variabel berikut di file <code class="font-mono text-xs bg-amber-100 dark:bg-amber-900/40 px-1 rounded">.env</code>:</p>
-                                            <pre class="mt-2 text-xs font-mono bg-amber-100 dark:bg-amber-900/30 rounded-lg p-3 text-amber-800 dark:text-amber-200 overflow-x-auto">S3_KYC_ENDPOINT=https://s3.your-provider.com
-S3_KYC_BUCKET=your-bucket-name
-S3_KYC_REGION=id-jkt-1
-S3_KYC_KEY=your-access-key
-S3_KYC_SECRET=your-secret-key
-S3_KYC_PATH_STYLE=true</pre>
+                                            <p class="mt-1 text-amber-700 dark:text-amber-300">Lengkapi secret berikut di <a href="{{ route('admin.secrets.index') }}" class="font-semibold underline">Secret Manager</a>:</p>
+                                            <pre class="mt-2 text-xs font-mono bg-amber-100 dark:bg-amber-900/30 rounded-lg p-3 text-amber-800 dark:text-amber-200 overflow-x-auto">s3_kyc.endpoint
+s3_kyc.bucket
+s3_kyc.region
+s3_kyc.key
+s3_kyc.secret
+s3_kyc.path_style</pre>
                                         </div>
                                     </div>
                                 </div>

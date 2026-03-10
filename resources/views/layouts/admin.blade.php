@@ -105,6 +105,7 @@
                                 </div>
                                 <a href="{{ route('admin.profile.edit') }}" class="block px-3 py-1 text-sm leading-6 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700">Profil Saya</a>
                                 <a href="{{ route('admin.settings.index') }}" class="block px-3 py-1 text-sm leading-6 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700">Pengaturan</a>
+                                <a href="{{ route('admin.secrets.index') }}" class="block px-3 py-1 text-sm leading-6 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700">Secret Manager</a>
                                 <div class="h-px my-1 bg-gray-100 dark:bg-gray-700"></div>
                                 <form action="{{ route('admin.logout') }}" method="POST">
                                     @csrf
